@@ -25,7 +25,7 @@ export default function LoginPage() {
     setError('');
     try {
       await login(setor, password);
-      router.push('/dashboard');
+      router.push(setor === 'agente' ? '/dashboard/bloqueados' : '/dashboard');
     } catch (err) {
       setError(err.message || 'Erro ao fazer login');
     } finally {
