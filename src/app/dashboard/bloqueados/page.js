@@ -8,7 +8,15 @@ import { Lock, Search, Unlock, Loader2, X, Download } from 'lucide-react';
 
 export default function BloqueadosPage() {
   const { setor, user } = useAuth();
-  const { data: bloqueados, refetch } = useRealtime('veiculos_bloqueados', { orderBy: 'bloqueado_em', orderAsc: false });
+  const isAgente = setor === 'agente';
+
+  // Agente: só vê veículos com status_final = VEÍCULO BLOQUEADO
+  // Financeiro/Doc: vê todos
+  const realtimeOpts = isAgente
+    ? { orderBy: 'bloqueado_em', orderAsc: false, filter: { status_final: 'VEÍCULO BLOQUEADO' } }
+    : { orderBy: 'bloqueado_em', orderAsc: false };
+
+  const { data: bloqueados, refetch } = useRealtime('veiculos_bloqueados', realtimeOpts);
   const [search, setSearch] = useState('');
   const [filterPlaca, setFilterPlaca] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -18,7 +26,13 @@ export default function BloqueadosPage() {
   const [loading, setLoading] = useState(false);
 
   const filtered = bloqueados.filter(b => {
-    const matchSearch = !search || b.placa?.toLowerCase().includes(search.toLowerCase()) || b.cod_cliente?.toLowerCase().includes(search.toLowerCase()) || b.razao_social?.toLowerCase().includes(search.toLowerCase());
+    const s = search.toLowerCase();
+    // Agente não pesquisa por cliente
+    const matchSearch = !search ||
+      b.placa?.toLowerCase().includes(s) ||
+      b.chassi?.toLowerCase().includes(s) ||
+      b.marca_modelo?.toLowerCase().includes(s) ||
+      (!isAgente && (b.cod_cliente?.toLowerCase().includes(s) || b.razao_social?.toLowerCase().includes(s)));
     const matchPlaca = !filterPlaca || b.final_placa === filterPlaca;
     return matchSearch && matchPlaca;
   });
@@ -73,24 +87,28 @@ export default function BloqueadosPage() {
           </h1>
           <p className="text-text-muted text-sm mt-1">{filtered.length} veículos</p>
         </div>
-        <button onClick={() => exportToCSV(filtered, [
-          { key: 'placa', label: 'Placa' },
-          { key: 'marca_modelo', label: 'Modelo' },
-          { key: 'chassi', label: 'Chassi' },
-          { key: 'razao_social', label: 'Razão Social' },
-          { key: 'status_financeiro', label: 'Status Financeiro' },
-          { key: 'status_documentacao', label: 'Status Documentação' },
-          { key: 'status_final', label: 'Status Final' },
-        ], 'veiculos_bloqueados')} className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger text-xs rounded-xl hover:bg-danger/20 transition-all cursor-pointer">
-          <Download className="w-4 h-4" /> Exportar CSV
-        </button>
+        {!isAgente && (
+          <button onClick={() => exportToCSV(filtered, [
+            { key: 'placa', label: 'Placa' },
+            { key: 'marca_modelo', label: 'Modelo' },
+            { key: 'chassi', label: 'Chassi' },
+            { key: 'razao_social', label: 'Razão Social' },
+            { key: 'status_financeiro', label: 'Status Financeiro' },
+            { key: 'status_documentacao', label: 'Status Documentação' },
+            { key: 'status_final', label: 'Status Final' },
+          ], 'veiculos_bloqueados')} className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger text-xs rounded-xl hover:bg-danger/20 transition-all cursor-pointer">
+            <Download className="w-4 h-4" /> Exportar CSV
+          </button>
+        )}
       </div>
 
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar placa, cliente..." className="w-full pl-10 pr-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text placeholder-text-muted focus:outline-none focus:border-primary" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder={isAgente ? 'Buscar placa, chassi, modelo...' : 'Buscar placa, cliente...'}
+            className="w-full pl-10 pr-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text placeholder-text-muted focus:outline-none focus:border-primary" />
         </div>
         <select value={filterPlaca} onChange={e => setFilterPlaca(e.target.value)} className="px-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text focus:outline-none focus:border-primary">
           <option value="">Final placa</option>
@@ -106,11 +124,11 @@ export default function BloqueadosPage() {
               <th className="text-left py-3 px-4 text-text-muted font-medium">Placa</th>
               <th className="text-left py-3 px-4 text-text-muted font-medium">Modelo</th>
               <th className="text-left py-3 px-4 text-text-muted font-medium">Chassi</th>
-              <th className="text-left py-3 px-4 text-text-muted font-medium">Cliente</th>
-              <th className="text-center py-3 px-4 text-text-muted font-medium">Financeiro</th>
-              <th className="text-center py-3 px-4 text-text-muted font-medium">Documentação</th>
-              <th className="text-center py-3 px-4 text-text-muted font-medium">Status Final</th>
-              <th className="text-center py-3 px-4 text-text-muted font-medium">Ações</th>
+              {!isAgente && <th className="text-left py-3 px-4 text-text-muted font-medium">Cliente</th>}
+              {!isAgente && <th className="text-center py-3 px-4 text-text-muted font-medium">Financeiro</th>}
+              {!isAgente && <th className="text-center py-3 px-4 text-text-muted font-medium">Documentação</th>}
+              {!isAgente && <th className="text-center py-3 px-4 text-text-muted font-medium">Status Final</th>}
+              {!isAgente && <th className="text-center py-3 px-4 text-text-muted font-medium">Ações</th>}
             </tr>
           </thead>
           <tbody>
@@ -119,36 +137,44 @@ export default function BloqueadosPage() {
                 <td className="py-3 px-4 text-text font-mono font-bold">{b.placa}</td>
                 <td className="py-3 px-4 text-text-muted text-xs">{b.marca_modelo || '-'}</td>
                 <td className="py-3 px-4 text-text-muted font-mono text-xs">{b.chassi || '-'}</td>
-                <td className="py-3 px-4 text-text">{b.razao_social || b.cod_cliente}</td>
-                <td className="py-3 px-4 text-center">
-                  <span className={`text-xs px-2 py-1 rounded-lg ${b.status_financeiro === 'BLOQUEADO' ? 'badge-bloqueado' : 'badge-liberado'}`}>
-                    {b.status_financeiro}
-                  </span>
-                </td>
-                <td className="py-3 px-4 text-center">
-                  <span className={`text-xs px-2 py-1 rounded-lg ${b.status_documentacao === 'BLOQUEADO' ? 'badge-bloqueado' : 'badge-liberado'}`}>
-                    {b.status_documentacao}
-                  </span>
-                </td>
-                <td className="py-3 px-4 text-center">
-                  <span className={`text-xs px-2 py-1 rounded-lg font-bold ${b.status_final === 'VEÍCULO BLOQUEADO' ? 'badge-bloqueado' : 'badge-liberado'}`}>
-                    {b.status_final}
-                  </span>
-                </td>
-                <td className="py-3 px-4 text-center">
-                  <div className="flex gap-1 justify-center">
-                    {setor === 'financeiro' && b.status_financeiro === 'BLOQUEADO' && (
-                      <button onClick={() => openDesbloqueio(b, 'financeiro')} className="px-2 py-1 bg-success/10 text-success text-xs rounded-lg hover:bg-success/20 cursor-pointer">
-                        <Unlock className="w-3 h-3 inline mr-1" />Fin.
-                      </button>
-                    )}
-                    {setor === 'documentacao' && b.status_documentacao === 'BLOQUEADO' && (
-                      <button onClick={() => openDesbloqueio(b, 'documentacao')} className="px-2 py-1 bg-success/10 text-success text-xs rounded-lg hover:bg-success/20 cursor-pointer">
-                        <Unlock className="w-3 h-3 inline mr-1" />Doc.
-                      </button>
-                    )}
-                  </div>
-                </td>
+                {!isAgente && <td className="py-3 px-4 text-text">{b.razao_social || b.cod_cliente}</td>}
+                {!isAgente && (
+                  <td className="py-3 px-4 text-center">
+                    <span className={`text-xs px-2 py-1 rounded-lg ${b.status_financeiro === 'BLOQUEADO' ? 'badge-bloqueado' : 'badge-liberado'}`}>
+                      {b.status_financeiro}
+                    </span>
+                  </td>
+                )}
+                {!isAgente && (
+                  <td className="py-3 px-4 text-center">
+                    <span className={`text-xs px-2 py-1 rounded-lg ${b.status_documentacao === 'BLOQUEADO' ? 'badge-bloqueado' : 'badge-liberado'}`}>
+                      {b.status_documentacao}
+                    </span>
+                  </td>
+                )}
+                {!isAgente && (
+                  <td className="py-3 px-4 text-center">
+                    <span className={`text-xs px-2 py-1 rounded-lg font-bold ${b.status_final === 'VEÍCULO BLOQUEADO' ? 'badge-bloqueado' : 'badge-liberado'}`}>
+                      {b.status_final}
+                    </span>
+                  </td>
+                )}
+                {!isAgente && (
+                  <td className="py-3 px-4 text-center">
+                    <div className="flex gap-1 justify-center">
+                      {setor === 'financeiro' && b.status_financeiro === 'BLOQUEADO' && (
+                        <button onClick={() => openDesbloqueio(b, 'financeiro')} className="px-2 py-1 bg-success/10 text-success text-xs rounded-lg hover:bg-success/20 cursor-pointer">
+                          <Unlock className="w-3 h-3 inline mr-1" />Fin.
+                        </button>
+                      )}
+                      {setor === 'documentacao' && b.status_documentacao === 'BLOQUEADO' && (
+                        <button onClick={() => openDesbloqueio(b, 'documentacao')} className="px-2 py-1 bg-success/10 text-success text-xs rounded-lg hover:bg-success/20 cursor-pointer">
+                          <Unlock className="w-3 h-3 inline mr-1" />Doc.
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -161,37 +187,45 @@ export default function BloqueadosPage() {
           <div key={b.id} className="glass-card p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-bold text-text font-mono">{b.placa}</span>
-              <span className={`text-xs px-2 py-1 rounded-lg font-bold ${b.status_final === 'VEÍCULO BLOQUEADO' ? 'badge-bloqueado' : 'badge-liberado'}`}>
-                {b.status_final === 'VEÍCULO BLOQUEADO' ? '🔒 BLOQUEADO' : '✅ LIBERADO'}
-              </span>
+              {isAgente ? (
+                <span className="badge-bloqueado text-xs px-2 py-1 rounded-lg font-bold">🔒 BLOQUEADO</span>
+              ) : (
+                <span className={`text-xs px-2 py-1 rounded-lg font-bold ${b.status_final === 'VEÍCULO BLOQUEADO' ? 'badge-bloqueado' : 'badge-liberado'}`}>
+                  {b.status_final === 'VEÍCULO BLOQUEADO' ? '🔒 BLOQUEADO' : '✅ LIBERADO'}
+                </span>
+              )}
             </div>
             <p className="text-xs text-text-muted">{b.marca_modelo || '-'}</p>
             {b.chassi && <p className="text-xs text-text-muted font-mono">Chassi: {b.chassi}</p>}
-            <p className="text-xs text-text">{b.razao_social || b.cod_cliente}</p>
-            <div className="flex gap-2 mt-2 text-xs">
-              <span className={b.status_financeiro === 'BLOQUEADO' ? 'text-danger' : 'text-success'}>Fin: {b.status_financeiro}</span>
-              <span className={b.status_documentacao === 'BLOQUEADO' ? 'text-danger' : 'text-success'}>Doc: {b.status_documentacao}</span>
-            </div>
-            <div className="flex gap-2 mt-3">
-              {setor === 'financeiro' && b.status_financeiro === 'BLOQUEADO' && (
-                <button onClick={() => openDesbloqueio(b, 'financeiro')} className="flex-1 py-2.5 bg-success/10 text-success border border-success/20 rounded-xl text-xs font-medium cursor-pointer">
-                  <Unlock className="w-3 h-3 inline mr-1" /> Desbloquear Fin.
-                </button>
-              )}
-              {setor === 'documentacao' && b.status_documentacao === 'BLOQUEADO' && (
-                <button onClick={() => openDesbloqueio(b, 'documentacao')} className="flex-1 py-2.5 bg-success/10 text-success border border-success/20 rounded-xl text-xs font-medium cursor-pointer">
-                  <Unlock className="w-3 h-3 inline mr-1" /> Desbloquear Doc.
-                </button>
-              )}
-            </div>
+            {!isAgente && <p className="text-xs text-text">{b.razao_social || b.cod_cliente}</p>}
+            {!isAgente && (
+              <>
+                <div className="flex gap-2 mt-2 text-xs">
+                  <span className={b.status_financeiro === 'BLOQUEADO' ? 'text-danger' : 'text-success'}>Fin: {b.status_financeiro}</span>
+                  <span className={b.status_documentacao === 'BLOQUEADO' ? 'text-danger' : 'text-success'}>Doc: {b.status_documentacao}</span>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  {setor === 'financeiro' && b.status_financeiro === 'BLOQUEADO' && (
+                    <button onClick={() => openDesbloqueio(b, 'financeiro')} className="flex-1 py-2.5 bg-success/10 text-success border border-success/20 rounded-xl text-xs font-medium cursor-pointer">
+                      <Unlock className="w-3 h-3 inline mr-1" /> Desbloquear Fin.
+                    </button>
+                  )}
+                  {setor === 'documentacao' && b.status_documentacao === 'BLOQUEADO' && (
+                    <button onClick={() => openDesbloqueio(b, 'documentacao')} className="flex-1 py-2.5 bg-success/10 text-success border border-success/20 rounded-xl text-xs font-medium cursor-pointer">
+                      <Unlock className="w-3 h-3 inline mr-1" /> Desbloquear Doc.
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         ))}
       </div>
 
       {filtered.length === 0 && <p className="text-center text-text-muted py-10">Nenhum veículo bloqueado</p>}
 
-      {/* Modal Desbloqueio */}
-      {showModal && selected && (
+      {/* Modal Desbloqueio — só para financeiro/documentação */}
+      {!isAgente && showModal && selected && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
           <div className="glass-card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
