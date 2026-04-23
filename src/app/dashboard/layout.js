@@ -5,11 +5,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 import { NAV_ITEMS, SETORES } from '@/lib/constants';
 import { 
-  LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield,
+  LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users,
   LogOut, Menu, X, Wifi, WifiOff, Sun, Moon
 } from 'lucide-react';
 
-const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield };
+const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users };
 
 export default function DashboardLayout({ children }) {
   const { user, setor, loading, logout, hasRole } = useAuth();

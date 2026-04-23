@@ -13,6 +13,7 @@ export const SETOR_CREDENTIALS = {
 export const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard', roles: ['financeiro', 'documentacao', 'agente'] },
   { href: '/dashboard/importar', label: 'Importar Dados', icon: 'Upload', roles: ['financeiro'] },
+  { href: '/dashboard/clientes', label: 'Clientes', icon: 'Users', roles: ['financeiro', 'documentacao'] },
   { href: '/dashboard/inadimplencia', label: 'Inadimplência', icon: 'AlertTriangle', roles: ['financeiro', 'documentacao'] },
   { href: '/dashboard/vendas', label: 'Vendas', icon: 'ShoppingCart', roles: ['financeiro', 'documentacao'] },
   { href: '/dashboard/bloqueados', label: 'Bloqueados', icon: 'Lock', roles: ['financeiro', 'documentacao', 'agente'] },

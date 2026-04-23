@@ -2,10 +2,11 @@
 import { useRealtime } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency } from '@/lib/utils';
-import { AlertTriangle, Lock, DollarSign, TrendingDown, Activity, Clock } from 'lucide-react';
+import { AlertTriangle, Lock, DollarSign, TrendingDown, Activity, Clock, Users } from 'lucide-react';
 
 export default function DashboardPage() {
   const { setor } = useAuth();
+  const { data: clientes } = useRealtime('clientes');
   const { data: inadimplencia } = useRealtime('inadimplencia');
   const { data: bloqueados } = useRealtime('veiculos_bloqueados', { filter: { status_final: 'VEÍCULO BLOQUEADO' } });
   const { data: auditLogs } = useRealtime('audit_logs', { orderBy: 'created_at', orderAsc: false });
@@ -16,10 +17,10 @@ export default function DashboardPage() {
   const lembretes = inadimplencia.filter(i => i.status_alerta === 'LEMBRETE').length;
 
   const cards = [
+    { title: 'Clientes Cadastrados', value: clientes.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
     { title: 'Total Inadimplente', value: formatCurrency(totalInadimplente), icon: DollarSign, color: 'text-danger', bg: 'bg-danger/10', border: 'border-danger/20' },
     { title: 'Veículos Bloqueados', value: bloqueados.length, icon: Lock, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20' },
     { title: 'Emergência (>90d)', value: emergencias, icon: AlertTriangle, color: 'text-danger', bg: 'bg-danger/10', border: 'border-danger/20' },
-    { title: 'Atenção (>60d)', value: atencao, icon: TrendingDown, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20' },
   ];
 
   return (
@@ -78,7 +79,8 @@ export default function DashboardPage() {
                 <div className={`w-2 h-2 rounded-full shrink-0 ${
                   log.acao === 'BLOQUEIO' ? 'bg-danger' : 
                   log.acao === 'DESBLOQUEIO' ? 'bg-success' : 
-                  log.acao === 'LOGIN' ? 'bg-primary' : 'bg-text-muted'
+                  log.acao === 'LOGIN' ? 'bg-primary' : 
+                  log.acao === 'IMPORTACAO' ? 'bg-warning' : 'bg-text-muted'
                 }`} />
                 <div className="min-w-0">
                   <p className="text-sm text-text truncate">{log.acao} — {log.detalhes}</p>
