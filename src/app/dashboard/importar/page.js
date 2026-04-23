@@ -1,9 +1,10 @@
 'use client';
 import { useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { smartSyncVendas, smartSyncInadimplencia, fillMissingRazaoSocial } from '@/lib/smartSync';
 import { useAuth } from '@/hooks/useAuth';
 import { useRealtime } from '@/hooks/useRealtime';
-import { Upload, Users, AlertTriangle, ShoppingCart, FileSpreadsheet, Check, X, Loader2, Clock, AlertCircle } from 'lucide-react';
+import { Upload, Users, AlertTriangle, ShoppingCart, FileSpreadsheet, Check, X, Loader2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 
 export default function ImportarPage() {
@@ -112,6 +113,7 @@ export default function ImportarPage() {
     setErrors([]);
     const errorList = [];
     let count = 0;
+    let syncInfo = { inserted: 0, updated: 0 };
     const protocolo = crypto.randomUUID();
 
     try {
@@ -197,18 +199,9 @@ export default function ImportarPage() {
           }
         }
 
-        for (let i = 0; i < records.length; i += 50) {
-          const batch = records.slice(i, i + 50);
-          const { data, error } = await supabase
-            .from('inadimplencia')
-            .insert(batch)
-            .select();
-          if (error) {
-            errorList.push(`Batch ${Math.floor(i / 50) + 1}: ${error.message}`);
-          } else {
-            count += (data?.length || batch.length);
-          }
-        }
+        // Smart Sync — merge inteligente (não duplica, preenche vazios)
+        syncInfo = await smartSyncInadimplencia(records, errorList);
+        count = syncInfo.inserted + syncInfo.updated;
 
       } else if (type === 'vendas') {
         const records = [];
@@ -262,18 +255,14 @@ export default function ImportarPage() {
           }
         }
 
-        for (let i = 0; i < records.length; i += 50) {
-          const batch = records.slice(i, i + 50);
-          const { data, error } = await supabase
-            .from('vendas')
-            .insert(batch)
-            .select();
-          if (error) {
-            errorList.push(`Batch ${Math.floor(i / 50) + 1}: ${error.message}`);
-          } else {
-            count += (data?.length || batch.length);
-          }
-        }
+        // Smart Sync — merge inteligente (não duplica, preenche vazios)
+        syncInfo = await smartSyncVendas(records, errorList);
+        count = syncInfo.inserted + syncInfo.updated;
+      }
+
+      // Pós-sync: Preencher razao_social faltante via tabela clientes
+      if (type === 'vendas' || type === 'inadimplencia') {
+        await fillMissingRazaoSocial(errorList);
       }
 
       // Log de importação
@@ -293,7 +282,10 @@ export default function ImportarPage() {
 
       setErrors(errorList);
       if (count > 0) {
-        setResult({ success: true, message: `✅ ${count} registros importados com sucesso! Protocolo: ${protocolo.slice(0, 8)}` });
+        const detail = syncInfo.updated > 0
+          ? `✅ ${syncInfo.inserted} novos + ${syncInfo.updated} atualizados (campos preenchidos) | Protocolo: ${protocolo.slice(0, 8)}`
+          : `✅ ${count} registros importados! Protocolo: ${protocolo.slice(0, 8)}`;
+        setResult({ success: true, message: detail });
       } else {
         setResult({ success: false, message: `❌ Nenhum registro importado. ${errorList.length} erros encontrados.` });
       }
