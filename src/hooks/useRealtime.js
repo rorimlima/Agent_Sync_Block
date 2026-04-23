@@ -117,8 +117,15 @@ export function useRealtime(table, options = {}) {
       .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
         setData(prev => {
           const { eventType, new: newRecord, old: oldRecord } = payload;
-          if (eventType === 'INSERT') return [newRecord, ...prev];
-          if (eventType === 'UPDATE') return prev.map(item => item.id === newRecord.id ? newRecord : item);
+          const f = filterRef.current;
+          // Verificar se o registro atende ao filtro
+          const matchesFilter = !f || Object.entries(f).every(([k, v]) => newRecord?.[k] === v);
+          if (eventType === 'INSERT') return matchesFilter ? [newRecord, ...prev] : prev;
+          if (eventType === 'UPDATE') {
+            if (matchesFilter) return prev.map(item => item.id === newRecord.id ? newRecord : item);
+            // Se não atende mais ao filtro, remover da lista
+            return prev.filter(item => item.id !== newRecord.id);
+          }
           if (eventType === 'DELETE') return prev.filter(item => item.id !== oldRecord.id);
           return prev;
         });

@@ -1,4 +1,6 @@
 'use client';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useStats } from '@/hooks/useRealtime';
 import { useRealtime } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
@@ -6,9 +8,19 @@ import { formatCurrency } from '@/lib/utils';
 import { AlertTriangle, Lock, DollarSign, TrendingDown, Activity, Clock, Users, ShoppingCart } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { setor } = useAuth();
+  const { setor, hasRole } = useAuth();
+  const router = useRouter();
   const { stats, loading: statsLoading } = useStats();
   const { data: auditLogs } = useRealtime('audit_logs', { orderBy: 'created_at', orderAsc: false, fetchAll: false });
+
+  // Agente não tem acesso ao Dashboard — redireciona para bloqueados
+  useEffect(() => {
+    if (setor === 'agente') {
+      router.replace('/dashboard/bloqueados');
+    }
+  }, [setor, router]);
+
+  if (setor === 'agente') return null;
 
   const cards = [
     { title: 'Clientes Cadastrados', value: stats.clientes.toLocaleString('pt-BR'), icon: Users, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
