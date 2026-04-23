@@ -34,7 +34,7 @@ export default function ImportarPage() {
     estado: ['estado', 'uf'],
     valor_devido: ['valor_devido', 'valor', 'valor_divida', 'saldo', 'saldo_devedor', 'total', 'valor_total'],
     data_vencimento: ['data_vencimento', 'vencimento', 'dt_vencimento', 'data_venc'],
-    data_venda: ['data_venda', 'data', 'dt_venda', 'data_compra'],
+    data_venda: ['data_venda', 'data', 'dt_venda', 'data_compra', 'notafiscal_dataemissao', 'data_emissao', 'dt_emissao'],
     placa: ['placa', 'placa_veiculo', 'veiculo_placauf', 'placauf'],
     chassi: ['chassi', 'veiculo_chassi', 'chassis', 'nr_chassi', 'num_chassi'],
     marca_modelo: ['marca_modelo', 'veiculo', 'veículo', 'modelo', 'descricao', 'descrição', 'marca', 'carro'],
