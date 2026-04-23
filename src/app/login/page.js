@@ -100,14 +100,14 @@ export default function LoginPage() {
                 <label htmlFor="fn">Primeiro nome</label>
                 <input id="fn" type="text" value={firstName}
                   onChange={e => { setFirstName(e.target.value); setError(''); }}
-                  placeholder="ex: adefabio" autoComplete="given-name" autoFocus />
+                  placeholder="Primeiro nome" autoComplete="given-name" autoFocus />
               </div>
               <span className="lp__sep">.</span>
               <div className="lp__field">
                 <label htmlFor="ln">Segundo nome</label>
                 <input id="ln" type="text" value={lastName}
                   onChange={e => { setLastName(e.target.value); setError(''); }}
-                  placeholder="ex: dayson" autoComplete="family-name" />
+                  placeholder="Segundo nome" autoComplete="family-name" />
               </div>
             </div>
 
