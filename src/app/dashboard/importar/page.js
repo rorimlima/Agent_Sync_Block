@@ -35,7 +35,8 @@ export default function ImportarPage() {
     valor_devido: ['valor_devido', 'valor', 'valor_divida', 'saldo', 'saldo_devedor', 'total', 'valor_total'],
     data_vencimento: ['data_vencimento', 'vencimento', 'dt_vencimento', 'data_venc'],
     data_venda: ['data_venda', 'data', 'dt_venda', 'data_compra'],
-    placa: ['placa', 'placa_veiculo'],
+    placa: ['placa', 'placa_veiculo', 'veiculo_placauf', 'placauf'],
+    chassi: ['chassi', 'veiculo_chassi', 'chassis', 'nr_chassi', 'num_chassi'],
     marca_modelo: ['marca_modelo', 'veiculo', 'veículo', 'modelo', 'descricao', 'descrição', 'marca', 'carro'],
     valor_venda: ['valor_venda', 'valor', 'preco', 'preço', 'valor_total', 'total'],
   };
@@ -220,6 +221,7 @@ export default function ImportarPage() {
           const nome = findCol(row, COL_MAP.razao_social);
           if (nome) clientNames[cod] = nome;
           const placa = findCol(row, COL_MAP.placa).toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const chassi = findCol(row, COL_MAP.chassi).toUpperCase().replace(/[^A-Z0-9]/g, '');
           const dateKey = Object.keys(row).find(k => COL_MAP.data_venda.includes(k.toLowerCase().trim()));
           const dateFmt = parseDate(dateKey ? row[dateKey] : '');
           const valorStr = findCol(row, COL_MAP.valor_venda);
@@ -228,6 +230,7 @@ export default function ImportarPage() {
             razao_social: nome || null,
             data_venda: dateFmt,
             placa: placa || null,
+            chassi: chassi || null,
             marca_modelo: findCol(row, COL_MAP.marca_modelo) || null,
             valor_venda_cents: parseValor(valorStr),
           });
