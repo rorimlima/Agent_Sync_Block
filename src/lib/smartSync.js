@@ -143,9 +143,7 @@ export async function smartSyncInadimplencia(records, errorList) {
 export async function fillMissingRazaoSocial(errorList) {
   const tables = ['vendas', 'inadimplencia'];
   for (const table of tables) {
-    const { error } = await supabase.rpc('fill_razao_social_' + table).catch(() => ({}));
-    if (error) {
-      // Fallback manual se RPC não existe
+    try {
       let pg = 0, more = true;
       while (more) {
         const { data: rows } = await supabase.from(table)
@@ -153,7 +151,7 @@ export async function fillMissingRazaoSocial(errorList) {
           .or('razao_social.is.null,razao_social.eq.')
           .range(pg * 200, (pg + 1) * 200 - 1);
         if (!rows || rows.length === 0) { more = false; break; }
-        
+
         const cods = [...new Set(rows.map(r => r.cod_cliente))];
         const { data: clis } = await supabase.from('clientes')
           .select('cod_cliente, razao_social').in('cod_cliente', cods);
@@ -168,6 +166,8 @@ export async function fillMissingRazaoSocial(errorList) {
         more = rows.length === 200;
         pg++;
       }
+    } catch (err) {
+      errorList.push(`fillRazaoSocial ${table}: ${err.message}`);
     }
   }
 }
