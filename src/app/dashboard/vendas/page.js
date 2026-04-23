@@ -57,6 +57,14 @@ export default function VendasPage() {
       }, { onConflict: 'placa' });
     }
 
+    // Se desbloqueou qualquer setor, liberar o veículo na tela do agente
+    if (!newValue && venda.placa) {
+      const statusField = tipo === 'financeiro' ? 'status_financeiro' : 'status_documentacao';
+      await supabase.from('veiculos_bloqueados')
+        .update({ [statusField]: 'LIBERADO', status_final: 'LIBERADO' })
+        .eq('placa', venda.placa);
+    }
+
     await supabase.from('audit_logs').insert({
       acao: newValue ? 'BLOQUEIO' : 'DESBLOQUEIO', setor,
       detalhes: `${newValue ? 'Bloqueio' : 'Desbloqueio'} ${tipo} — Placa: ${venda.placa} | ${venda.razao_social || venda.cod_cliente}`,

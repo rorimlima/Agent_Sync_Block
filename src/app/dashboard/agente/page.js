@@ -88,8 +88,7 @@ export default function AgentePage() {
                 <span className="badge-bloqueado text-xs px-2 py-1 rounded-lg">🔒</span>
               </div>
               {b.chassi && <p className="text-xs text-text-muted font-mono">Chassi: {b.chassi}</p>}
-              <p className="text-xs text-text-muted">{b.marca_modelo}</p>
-              <p className="text-xs text-text">{b.razao_social || b.cod_cliente}</p>
+              <p className="text-xs text-text-muted">{b.marca_modelo || '-'}</p>
             </button>
           ))}
           {bloqueados.length === 0 && <p className="text-sm text-text-muted col-span-2 text-center py-6">Nenhum veículo bloqueado</p>}
