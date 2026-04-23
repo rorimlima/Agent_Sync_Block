@@ -172,7 +172,7 @@ export default function VendasPage() {
               <th className="text-left py-3 px-3 text-text-muted font-medium">Razão Social</th>
               <th className="text-left py-3 px-3 text-text-muted font-medium">Placa</th>
               <th className="text-left py-3 px-3 text-text-muted font-medium">Chassi</th>
-              <th className="text-left py-3 px-3 text-text-muted font-medium">Modelo</th>
+              <th className="text-left py-3 px-3 text-text-muted font-medium">Data Venda</th>
               <th className="text-right py-3 px-3 text-text-muted font-medium">Valor</th>
               <th className="text-center py-3 px-3 text-text-muted font-medium">Financeiro</th>
               <th className="text-center py-3 px-3 text-text-muted font-medium">Documentação</th>
@@ -188,7 +188,7 @@ export default function VendasPage() {
                   <td className="py-3 px-3 text-text font-medium text-xs">{v.razao_social || '-'}</td>
                   <td className="py-3 px-3 text-text font-mono font-bold">{v.placa || '-'}</td>
                   <td className="py-3 px-3 text-text-muted font-mono text-xs">{v.chassi || '-'}</td>
-                  <td className="py-3 px-3 text-text-muted text-xs">{v.marca_modelo || '-'}</td>
+                  <td className="py-3 px-3 text-text-muted text-xs">{v.data_venda ? formatDate(v.data_venda) : '-'}</td>
                   <td className="py-3 px-3 text-right text-text font-medium">{formatCurrency(v.valor_venda_cents)}</td>
                   <td className="py-3 px-3 text-center"><BloqueioBtn venda={v} tipo="financeiro" /></td>
                   <td className="py-3 px-3 text-center"><BloqueioBtn venda={v} tipo="documentacao" /></td>
@@ -219,7 +219,7 @@ export default function VendasPage() {
               </div>
               <p className="text-sm font-medium text-text">{v.razao_social || v.cod_cliente}</p>
               {v.chassi && <p className="text-xs text-text-muted font-mono">Chassi: {v.chassi}</p>}
-              <p className="text-xs text-text-muted">{v.marca_modelo}</p>
+              {v.data_venda && <p className="text-xs text-text-muted">Data: {formatDate(v.data_venda)}</p>}
               <p className="text-sm font-bold text-text mt-1">{formatCurrency(v.valor_venda_cents)}</p>
               <div className="flex gap-2 mt-3">
                 <BloqueioBtn venda={v} tipo="financeiro" />
