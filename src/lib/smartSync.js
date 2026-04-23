@@ -5,11 +5,10 @@ import { supabase } from './supabase';
  * Compara registros da planilha com o banco e atualiza apenas campos NULL/vazios.
  */
 
-// Merge: novo valor só entra se o existente é vazio/null
 function mergeField(existing, incoming) {
   if (incoming === null || incoming === undefined || incoming === '') return existing;
   if (existing === null || existing === undefined || existing === '') return incoming;
-  return existing; // preserva o existente
+  return existing;
 }
 
 function mergeRecord(existing, incoming, fields) {
@@ -23,16 +22,16 @@ function mergeRecord(existing, incoming, fields) {
 }
 
 /**
- * Smart upsert para vendas — usa cod_cliente + placa como chave composta.
- * Se existe, preenche campos vazios. Se não existe, insere.
+ * Smart upsert para vendas.
+ * Match: cod_cliente + placa + valor (quando placa existe) ou cod_cliente + valor (quando placa é null).
+ * Cada registro existente só pode ser usado 1 vez (_matched flag).
  */
 export async function smartSyncVendas(records, errorList) {
   const FIELDS = ['razao_social', 'data_venda', 'placa', 'chassi', 'marca_modelo', 'valor_venda_cents'];
   let inserted = 0, updated = 0;
 
-  // Buscar todos registros existentes por cod_cliente
   const codigos = [...new Set(records.map(r => r.cod_cliente))];
-  const existingMap = {};
+  const existingByCode = {};
 
   for (let i = 0; i < codigos.length; i += 50) {
     const batch = codigos.slice(i, i + 50);
@@ -40,9 +39,8 @@ export async function smartSyncVendas(records, errorList) {
       .select('id, cod_cliente, placa, chassi, razao_social, data_venda, marca_modelo, valor_venda_cents')
       .in('cod_cliente', batch);
     (data || []).forEach(r => {
-      const key = `${r.cod_cliente}|${(r.placa || '').toUpperCase()}`;
-      if (!existingMap[key]) existingMap[key] = [];
-      existingMap[key].push(r);
+      if (!existingByCode[r.cod_cliente]) existingByCode[r.cod_cliente] = [];
+      existingByCode[r.cod_cliente].push({ ...r, _matched: false });
     });
   }
 
@@ -50,22 +48,27 @@ export async function smartSyncVendas(records, errorList) {
   const toUpdate = [];
 
   for (const rec of records) {
-    const key = `${rec.cod_cliente}|${(rec.placa || '').toUpperCase()}`;
-    const matches = existingMap[key];
+    const candidates = existingByCode[rec.cod_cliente] || [];
+    let match = null;
 
-    if (matches && matches.length > 0) {
-      // Atualizar o primeiro match com campos faltantes
-      const existing = matches[0];
-      const { merged, changed } = mergeRecord(existing, rec, FIELDS);
-      if (changed) {
-        toUpdate.push({ id: existing.id, ...merged });
-      }
+    for (const ex of candidates) {
+      if (ex._matched) continue;
+      const placaMatch = (rec.placa && ex.placa)
+        ? rec.placa.toUpperCase() === ex.placa.toUpperCase()
+        : (!rec.placa && !ex.placa);
+      const valorMatch = rec.valor_venda_cents === ex.valor_venda_cents;
+      if (placaMatch && valorMatch) { match = ex; break; }
+    }
+
+    if (match) {
+      match._matched = true;
+      const { merged, changed } = mergeRecord(match, rec, FIELDS);
+      if (changed) toUpdate.push({ id: match.id, ...merged });
     } else {
       toInsert.push(rec);
     }
   }
 
-  // Batch insert
   for (let i = 0; i < toInsert.length; i += 50) {
     const batch = toInsert.slice(i, i + 50);
     const { data, error } = await supabase.from('vendas').insert(batch).select();
@@ -73,7 +76,6 @@ export async function smartSyncVendas(records, errorList) {
     else inserted += (data?.length || batch.length);
   }
 
-  // Batch update
   for (const upd of toUpdate) {
     const { id, ...fields } = upd;
     const { error } = await supabase.from('vendas').update(fields).eq('id', id);
@@ -85,14 +87,16 @@ export async function smartSyncVendas(records, errorList) {
 }
 
 /**
- * Smart upsert para inadimplência — usa cod_cliente + valor + data como chave.
+ * Smart upsert para inadimplência.
+ * Match: cod_cliente + valor_devido_cents + data_vencimento.
+ * Cada registro existente só pode ser usado 1 vez (_matched flag).
  */
 export async function smartSyncInadimplencia(records, errorList) {
   const FIELDS = ['razao_social', 'cpf_cnpj', 'valor_devido_cents', 'data_vencimento'];
   let inserted = 0, updated = 0;
 
   const codigos = [...new Set(records.map(r => r.cod_cliente))];
-  const existingMap = {};
+  const existingByCode = {};
 
   for (let i = 0; i < codigos.length; i += 50) {
     const batch = codigos.slice(i, i + 50);
@@ -100,8 +104,8 @@ export async function smartSyncInadimplencia(records, errorList) {
       .select('id, cod_cliente, cpf_cnpj, razao_social, valor_devido_cents, data_vencimento')
       .in('cod_cliente', batch);
     (data || []).forEach(r => {
-      const key = `${r.cod_cliente}|${r.valor_devido_cents}|${r.data_vencimento || ''}`;
-      existingMap[key] = r;
+      if (!existingByCode[r.cod_cliente]) existingByCode[r.cod_cliente] = [];
+      existingByCode[r.cod_cliente].push({ ...r, _matched: false });
     });
   }
 
@@ -109,12 +113,20 @@ export async function smartSyncInadimplencia(records, errorList) {
   const toUpdate = [];
 
   for (const rec of records) {
-    const key = `${rec.cod_cliente}|${rec.valor_devido_cents}|${rec.data_vencimento || ''}`;
-    const existing = existingMap[key];
+    const candidates = existingByCode[rec.cod_cliente] || [];
+    let match = null;
 
-    if (existing) {
-      const { merged, changed } = mergeRecord(existing, rec, FIELDS);
-      if (changed) toUpdate.push({ id: existing.id, ...merged });
+    for (const ex of candidates) {
+      if (ex._matched) continue;
+      const valorMatch = rec.valor_devido_cents === ex.valor_devido_cents;
+      const dateMatch = (rec.data_vencimento || '') === (ex.data_vencimento || '');
+      if (valorMatch && dateMatch) { match = ex; break; }
+    }
+
+    if (match) {
+      match._matched = true;
+      const { merged, changed } = mergeRecord(match, rec, FIELDS);
+      if (changed) toUpdate.push({ id: match.id, ...merged });
     } else {
       toInsert.push(rec);
     }
@@ -138,7 +150,7 @@ export async function smartSyncInadimplencia(records, errorList) {
 }
 
 /**
- * Pós-sync: Preenche razao_social em vendas/inadimplência usando tabela clientes
+ * Pós-sync: Preenche razao_social faltante via tabela clientes
  */
 export async function fillMissingRazaoSocial(errorList) {
   const tables = ['vendas', 'inadimplencia'];
