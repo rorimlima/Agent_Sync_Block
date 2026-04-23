@@ -4,7 +4,8 @@ import { useRealtime } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { ShoppingCart, Search, Lock, Unlock, Loader2 } from 'lucide-react';
+import { exportToCSV } from '@/lib/export';
+import { ShoppingCart, Search, Lock, Unlock, Loader2, Download } from 'lucide-react';
 
 export default function VendasPage() {
   const { setor, user, hasRole } = useAuth();
@@ -44,11 +45,24 @@ export default function VendasPage() {
 
   return (
     <div className="space-y-4 pb-20 md:pb-0">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-text flex items-center gap-2">
-          <ShoppingCart className="w-6 h-6 text-primary" /> Vendas
-        </h1>
-        <p className="text-text-muted text-sm mt-1">{filtered.length} registros</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-text flex items-center gap-2">
+            <ShoppingCart className="w-6 h-6 text-primary" /> Vendas
+          </h1>
+          <p className="text-text-muted text-sm mt-1">{filtered.length} registros</p>
+        </div>
+        <button onClick={() => exportToCSV(filtered, [
+          { key: 'data_venda', label: 'Data', format: 'date' },
+          { key: 'cod_cliente', label: 'Cliente' },
+          { key: 'placa', label: 'Placa' },
+          { key: 'marca_modelo', label: 'Modelo' },
+          { key: 'valor_venda_cents', label: 'Valor', format: 'currency' },
+          { key: 'bloqueio_financeiro', label: 'Bloq. Financeiro' },
+          { key: 'bloqueio_documentacao', label: 'Bloq. Documentação' },
+        ], 'vendas')} className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary text-xs rounded-xl hover:bg-primary/20 transition-all cursor-pointer">
+          <Download className="w-4 h-4" /> Exportar CSV
+        </button>
       </div>
 
       {/* Filters */}

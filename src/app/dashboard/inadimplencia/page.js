@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { useRealtime } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency, getAlertBadgeClass, getAlertEmoji, getAlertLabel } from '@/lib/utils';
-import { AlertTriangle, Search, X, Car } from 'lucide-react';
+import { exportToCSV } from '@/lib/export';
+import { AlertTriangle, Search, X, Car, Download } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 export default function InadimplenciaPage() {
@@ -48,11 +49,22 @@ export default function InadimplenciaPage() {
 
   return (
     <div className="space-y-4 pb-20 md:pb-0">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-text flex items-center gap-2">
-          <AlertTriangle className="w-6 h-6 text-danger" /> Inadimplência
-        </h1>
-        <p className="text-text-muted text-sm mt-1">{clientList.length} clientes inadimplentes</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-text flex items-center gap-2">
+            <AlertTriangle className="w-6 h-6 text-danger" /> Inadimplência
+          </h1>
+          <p className="text-text-muted text-sm mt-1">{clientList.length} clientes inadimplentes</p>
+        </div>
+        <button onClick={() => exportToCSV(filtered, [
+          { key: 'cod_cliente', label: 'Cód. Cliente' },
+          { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
+          { key: 'valor_devido_cents', label: 'Valor Devido', format: 'currency' },
+          { key: 'data_vencimento', label: 'Vencimento', format: 'date' },
+          { key: 'status_alerta', label: 'Status' },
+        ], 'inadimplencia')} className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger text-xs rounded-xl hover:bg-danger/20 transition-all cursor-pointer">
+          <Download className="w-4 h-4" /> Exportar CSV
+        </button>
       </div>
 
       {/* Filters */}

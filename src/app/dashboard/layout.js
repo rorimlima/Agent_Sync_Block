@@ -2,16 +2,18 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from '@/hooks/useTheme';
 import { NAV_ITEMS, SETORES } from '@/lib/constants';
 import { 
   LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield,
-  LogOut, Menu, X, Wifi, WifiOff
+  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon
 } from 'lucide-react';
 
 const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield };
 
 export default function DashboardLayout({ children }) {
   const { user, setor, loading, logout, hasRole } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -108,6 +110,13 @@ export default function DashboardLayout({ children }) {
             </div>
           </div>
           <button
+            onClick={toggleTheme}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-text-muted hover:text-primary hover:bg-primary/5 transition-all cursor-pointer mb-1"
+          >
+            {theme === 'dark' ? <Sun className="w-4.5 h-4.5" /> : <Moon className="w-4.5 h-4.5" />}
+            {theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
+          </button>
+          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-text-muted hover:text-danger hover:bg-danger/5 transition-all cursor-pointer"
           >
@@ -125,6 +134,9 @@ export default function DashboardLayout({ children }) {
         </div>
         <div className="flex items-center gap-3">
           {online ? <Wifi className="w-4 h-4 text-success" /> : <WifiOff className="w-4 h-4 text-danger" />}
+          <button onClick={toggleTheme} className="text-text-muted hover:text-primary cursor-pointer">
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-text-muted cursor-pointer">
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
