@@ -76,7 +76,7 @@ export default function BloqueadosPage() {
         <button onClick={() => exportToCSV(filtered, [
           { key: 'placa', label: 'Placa' },
           { key: 'marca_modelo', label: 'Modelo' },
-          { key: 'cod_cliente', label: 'Cód. Cliente' },
+          { key: 'chassi', label: 'Chassi' },
           { key: 'razao_social', label: 'Razão Social' },
           { key: 'status_financeiro', label: 'Status Financeiro' },
           { key: 'status_documentacao', label: 'Status Documentação' },
@@ -105,6 +105,7 @@ export default function BloqueadosPage() {
             <tr className="border-b border-border bg-surface-2/50">
               <th className="text-left py-3 px-4 text-text-muted font-medium">Placa</th>
               <th className="text-left py-3 px-4 text-text-muted font-medium">Modelo</th>
+              <th className="text-left py-3 px-4 text-text-muted font-medium">Chassi</th>
               <th className="text-left py-3 px-4 text-text-muted font-medium">Cliente</th>
               <th className="text-center py-3 px-4 text-text-muted font-medium">Financeiro</th>
               <th className="text-center py-3 px-4 text-text-muted font-medium">Documentação</th>
@@ -116,7 +117,8 @@ export default function BloqueadosPage() {
             {filtered.map(b => (
               <tr key={b.id} className="border-b border-border/50 hover:bg-surface-2/30">
                 <td className="py-3 px-4 text-text font-mono font-bold">{b.placa}</td>
-                <td className="py-3 px-4 text-text-muted">{b.marca_modelo}</td>
+                <td className="py-3 px-4 text-text-muted text-xs">{b.marca_modelo || '-'}</td>
+                <td className="py-3 px-4 text-text-muted font-mono text-xs">{b.chassi || '-'}</td>
                 <td className="py-3 px-4 text-text">{b.razao_social || b.cod_cliente}</td>
                 <td className="py-3 px-4 text-center">
                   <span className={`text-xs px-2 py-1 rounded-lg ${b.status_financeiro === 'BLOQUEADO' ? 'badge-bloqueado' : 'badge-liberado'}`}>
@@ -163,7 +165,8 @@ export default function BloqueadosPage() {
                 {b.status_final === 'VEÍCULO BLOQUEADO' ? '🔒 BLOQUEADO' : '✅ LIBERADO'}
               </span>
             </div>
-            <p className="text-xs text-text-muted">{b.marca_modelo}</p>
+            <p className="text-xs text-text-muted">{b.marca_modelo || '-'}</p>
+            {b.chassi && <p className="text-xs text-text-muted font-mono">Chassi: {b.chassi}</p>}
             <p className="text-xs text-text">{b.razao_social || b.cod_cliente}</p>
             <div className="flex gap-2 mt-2 text-xs">
               <span className={b.status_financeiro === 'BLOQUEADO' ? 'text-danger' : 'text-success'}>Fin: {b.status_financeiro}</span>

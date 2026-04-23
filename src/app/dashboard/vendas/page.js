@@ -51,7 +51,9 @@ export default function VendasPage() {
     if (dualBlock && venda.placa) {
       await supabase.from('veiculos_bloqueados').upsert({
         placa: venda.placa, cod_cliente: venda.cod_cliente,
+        chassi: venda.chassi || null, marca_modelo: venda.marca_modelo || null,
         status_final: 'VEÍCULO BLOQUEADO', razao_social: venda.razao_social,
+        venda_id: venda.id,
       }, { onConflict: 'placa' });
     }
 
