@@ -151,20 +151,35 @@ export default function ImportarPage() {
       } else if (type === 'inadimplencia') {
         const records = [];
         const clientCods = new Set();
+        const clientNames = {};
         rows.forEach((row, i) => {
           const cod = findCol(row, COL_MAP.cod_cliente);
           if (!cod) { errorList.push(`Linha ${i + 2}: cod_cliente vazio — ignorada`); return; }
           clientCods.add(cod);
+          const nome = findCol(row, COL_MAP.razao_social);
+          if (nome) clientNames[cod] = nome;
           const valorStr = findCol(row, COL_MAP.valor_devido);
           const dateKey = Object.keys(row).find(k => COL_MAP.data_vencimento.includes(k.toLowerCase().trim()));
           const dateFmt = parseDate(dateKey ? row[dateKey] : '');
           records.push({
             cod_cliente: cod,
+            razao_social: nome || null,
             cpf_cnpj: findCol(row, COL_MAP.cpf_cnpj) || null,
             valor_devido_cents: parseValor(valorStr),
             data_vencimento: dateFmt,
           });
         });
+
+        // Buscar nomes de clientes existentes para registros sem nome
+        if (records.some(r => !r.razao_social)) {
+          const codsSemNome = [...new Set(records.filter(r => !r.razao_social).map(r => r.cod_cliente))];
+          for (let i = 0; i < codsSemNome.length; i += 50) {
+            const batch = codsSemNome.slice(i, i + 50);
+            const { data: clis } = await supabase.from('clientes').select('cod_cliente, razao_social').in('cod_cliente', batch);
+            (clis || []).forEach(c => { if (c.razao_social) clientNames[c.cod_cliente] = c.razao_social; });
+          }
+          records.forEach(r => { if (!r.razao_social && clientNames[r.cod_cliente]) r.razao_social = clientNames[r.cod_cliente]; });
+        }
 
         // Auto-criar clientes que não existem (FK obrigatória)
         if (clientCods.size > 0) {
@@ -197,22 +212,37 @@ export default function ImportarPage() {
       } else if (type === 'vendas') {
         const records = [];
         const clientCods = new Set();
+        const clientNames = {};
         rows.forEach((row, i) => {
           const cod = findCol(row, COL_MAP.cod_cliente);
           if (!cod) { errorList.push(`Linha ${i + 2}: cod_cliente vazio — ignorada`); return; }
           clientCods.add(cod);
+          const nome = findCol(row, COL_MAP.razao_social);
+          if (nome) clientNames[cod] = nome;
           const placa = findCol(row, COL_MAP.placa).toUpperCase().replace(/[^A-Z0-9]/g, '');
           const dateKey = Object.keys(row).find(k => COL_MAP.data_venda.includes(k.toLowerCase().trim()));
           const dateFmt = parseDate(dateKey ? row[dateKey] : '');
           const valorStr = findCol(row, COL_MAP.valor_venda);
           records.push({
             cod_cliente: cod,
+            razao_social: nome || null,
             data_venda: dateFmt,
             placa: placa || null,
             marca_modelo: findCol(row, COL_MAP.marca_modelo) || null,
             valor_venda_cents: parseValor(valorStr),
           });
         });
+
+        // Buscar nomes de clientes existentes para registros sem nome
+        if (records.some(r => !r.razao_social)) {
+          const codsSemNome = [...new Set(records.filter(r => !r.razao_social).map(r => r.cod_cliente))];
+          for (let i = 0; i < codsSemNome.length; i += 50) {
+            const batch = codsSemNome.slice(i, i + 50);
+            const { data: clis } = await supabase.from('clientes').select('cod_cliente, razao_social').in('cod_cliente', batch);
+            (clis || []).forEach(c => { if (c.razao_social) clientNames[c.cod_cliente] = c.razao_social; });
+          }
+          records.forEach(r => { if (!r.razao_social && clientNames[r.cod_cliente]) r.razao_social = clientNames[r.cod_cliente]; });
+        }
 
         // Auto-criar clientes que não existem (FK obrigatória)
         if (clientCods.size > 0) {
