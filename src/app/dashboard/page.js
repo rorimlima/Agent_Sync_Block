@@ -8,19 +8,21 @@ import { formatCurrency } from '@/lib/utils';
 import { AlertTriangle, Lock, DollarSign, TrendingDown, Activity, Clock, Users, ShoppingCart } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { setor, hasRole } = useAuth();
+  const { colaborador, hasRole } = useAuth();
   const router = useRouter();
   const { stats, loading: statsLoading } = useStats();
   const { data: auditLogs } = useRealtime('audit_logs', { orderBy: 'created_at', orderAsc: false, fetchAll: false });
 
+  const funcao = colaborador?.funcao;
+
   // Agente não tem acesso ao Dashboard — redireciona para bloqueados
   useEffect(() => {
-    if (setor === 'agente') {
+    if (funcao === 'agente') {
       router.replace('/dashboard/bloqueados');
     }
-  }, [setor, router]);
+  }, [funcao, router]);
 
-  if (setor === 'agente') return null;
+  if (funcao === 'agente') return null;
 
   const cards = [
     { title: 'Clientes Cadastrados', value: stats.clientes.toLocaleString('pt-BR'), icon: Users, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },

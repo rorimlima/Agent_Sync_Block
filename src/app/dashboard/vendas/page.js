@@ -1,42 +1,75 @@
 'use client';
-import { useState } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useRealtime } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { exportToCSV } from '@/lib/export';
-import { ShoppingCart, Search, Lock, Unlock, LockOpen, Loader2, Download, Filter, X, Shield, FileText } from 'lucide-react';
+import { ShoppingCart, Search, Lock, Unlock, LockOpen, Loader2, Download, Filter, X, Shield, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const PAGE_SIZE = 50;
 
 export default function VendasPage() {
   const { setor, user, hasRole } = useAuth();
   const { data: vendas, refetch } = useRealtime('vendas', { orderBy: 'created_at', orderAsc: false });
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterBloqueio, setFilterBloqueio] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [loadingId, setLoadingId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  if (!hasRole(['financeiro', 'documentacao'])) {
+  // Debounce search to avoid filtering on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setCurrentPage(1); // Reset to page 1 on new search
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterBloqueio]);
+
+  if (!hasRole(['master', 'financeiro', 'documentacao'])) {
     return <div className="text-center py-20 text-text-muted">Acesso restrito</div>;
   }
 
-  const filtered = vendas.filter(v => {
-    const s = search.toLowerCase();
-    const matchSearch = !search ||
-      v.cod_cliente?.toLowerCase().includes(s) ||
-      v.razao_social?.toLowerCase().includes(s) ||
-      v.placa?.toLowerCase().includes(s) ||
-      v.chassi?.toLowerCase().includes(s) ||
-      v.marca_modelo?.toLowerCase().includes(s) ||
-      String(v.valor_venda_cents || '').includes(s);
+  // Stable filtered data using useMemo to avoid recalc on unrelated renders
+  const filtered = useMemo(() => {
+    const s = debouncedSearch.trim().toLowerCase();
+    return vendas.filter(v => {
+      // Search filter
+      let matchSearch = true;
+      if (s) {
+        matchSearch =
+          (v.cod_cliente && v.cod_cliente.toLowerCase().includes(s)) ||
+          (v.razao_social && v.razao_social.toLowerCase().includes(s)) ||
+          (v.placa && v.placa.toLowerCase().includes(s)) ||
+          (v.chassi && v.chassi.toLowerCase().includes(s)) ||
+          (v.marca_modelo && v.marca_modelo.toLowerCase().includes(s));
+      }
 
-    let matchBloqueio = true;
-    if (filterBloqueio === 'bloqueado') matchBloqueio = v.bloqueio_financeiro && v.bloqueio_documentacao;
-    else if (filterBloqueio === 'bloq_fin') matchBloqueio = v.bloqueio_financeiro === true;
-    else if (filterBloqueio === 'bloq_doc') matchBloqueio = v.bloqueio_documentacao === true;
-    else if (filterBloqueio === 'livre') matchBloqueio = !v.bloqueio_financeiro && !v.bloqueio_documentacao;
+      // Bloqueio filter
+      let matchBloqueio = true;
+      if (filterBloqueio === 'bloqueado') matchBloqueio = v.bloqueio_financeiro && v.bloqueio_documentacao;
+      else if (filterBloqueio === 'bloq_fin') matchBloqueio = v.bloqueio_financeiro === true;
+      else if (filterBloqueio === 'bloq_doc') matchBloqueio = v.bloqueio_documentacao === true;
+      else if (filterBloqueio === 'livre') matchBloqueio = !v.bloqueio_financeiro && !v.bloqueio_documentacao;
 
-    return matchSearch && matchBloqueio;
-  });
+      return matchSearch && matchBloqueio;
+    });
+  }, [vendas, debouncedSearch, filterBloqueio]);
+
+  // Paginated data
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedData = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, safePage]);
 
   const toggleBloqueio = async (venda, tipo) => {
     setLoadingId(venda.id + tipo);
@@ -80,7 +113,7 @@ export default function VendasPage() {
   const BloqueioBtn = ({ venda, tipo }) => {
     const field = tipo === 'financeiro' ? 'bloqueio_financeiro' : 'bloqueio_documentacao';
     const isBlocked = venda[field];
-    const canToggle = (tipo === 'financeiro' && setor === 'financeiro') || (tipo === 'documentacao' && setor === 'documentacao');
+    const canToggle = setor === 'master' || (tipo === 'financeiro' && setor === 'financeiro') || (tipo === 'documentacao' && setor === 'documentacao');
     const isLoading = loadingId === venda.id + tipo;
     const Icon = tipo === 'financeiro' ? Shield : FileText;
     const label = tipo === 'financeiro' ? 'Fin' : 'Doc';
@@ -121,7 +154,12 @@ export default function VendasPage() {
           <h1 className="text-xl md:text-2xl font-bold text-text flex items-center gap-2">
             <ShoppingCart className="w-6 h-6 text-primary" /> Vendas
           </h1>
-          <p className="text-text-muted text-sm mt-1">{filtered.length} registros</p>
+          <p className="text-text-muted text-sm mt-1">
+            {debouncedSearch || filterBloqueio
+              ? <><span className="text-primary font-semibold">{filtered.length}</span> de {vendas.length} registros</>
+              : <>{vendas.length} registros</>
+            }
+          </p>
         </div>
         <button onClick={() => exportToCSV(filtered, [
           { key: 'data_venda', label: 'Data', format: 'date' },
@@ -143,8 +181,14 @@ export default function VendasPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por placa, chassi, razão social, código, modelo, valor..."
-            className="w-full pl-10 pr-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text placeholder-text-muted focus:outline-none focus:border-primary" />
+            placeholder="Buscar por placa, chassi, razão social, código, modelo..."
+            className="w-full pl-10 pr-10 py-2.5 bg-surface border border-border rounded-xl text-sm text-text placeholder-text-muted focus:outline-none focus:border-primary transition-colors" />
+          {search && (
+            <button onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text cursor-pointer transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
         <button onClick={() => setShowFilters(!showFilters)}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all border ${showFilters || activeFilters > 0 ? 'bg-primary/10 text-primary border-primary/30' : 'bg-surface text-text-muted border-border hover:border-primary/30'}`}>
@@ -190,7 +234,7 @@ export default function VendasPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(v => {
+            {paginatedData.map(v => {
               const dualBlock = v.bloqueio_financeiro && v.bloqueio_documentacao;
               return (
                 <tr key={v.id} className={`border-b border-border/50 transition-colors ${dualBlock ? 'bg-danger/3 hover:bg-danger/6' : 'hover:bg-surface-2/30'}`}>
@@ -216,7 +260,7 @@ export default function VendasPage() {
 
       {/* Mobile Cards */}
       <div className="md:hidden space-y-2">
-        {filtered.map(v => {
+        {paginatedData.map(v => {
           const dualBlock = v.bloqueio_financeiro && v.bloqueio_documentacao;
           const partial = v.bloqueio_financeiro || v.bloqueio_documentacao;
           return (
@@ -240,7 +284,80 @@ export default function VendasPage() {
         })}
       </div>
 
-      {filtered.length === 0 && <p className="text-center text-text-muted py-10">Nenhuma venda encontrada</p>}
+      {/* Empty State */}
+      {filtered.length === 0 && (
+        <div className="text-center py-10">
+          <Search className="w-8 h-8 text-text-muted mx-auto mb-3 opacity-40" />
+          <p className="text-text-muted text-sm">
+            {debouncedSearch
+              ? <>Nenhuma venda encontrada para <strong className="text-text">&quot;{debouncedSearch}&quot;</strong></>
+              : 'Nenhuma venda encontrada'
+            }
+          </p>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-xs text-text-muted">
+            Mostrando {((safePage - 1) * PAGE_SIZE) + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} de {filtered.length}
+          </p>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+              disabled={safePage <= 1}
+              className="p-2 rounded-lg border border-border text-text-muted hover:text-text hover:bg-surface-2 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            {/* Page numbers */}
+            {(() => {
+              const pages = [];
+              const maxVisible = 5;
+              let start = Math.max(1, safePage - Math.floor(maxVisible / 2));
+              let end = Math.min(totalPages, start + maxVisible - 1);
+              if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
+
+              if (start > 1) {
+                pages.push(
+                  <button key={1} onClick={() => setCurrentPage(1)}
+                    className="w-8 h-8 rounded-lg text-xs font-medium text-text-muted hover:bg-surface-2 cursor-pointer transition-all">1</button>
+                );
+                if (start > 2) pages.push(<span key="start-ellipsis" className="text-text-muted text-xs px-1">…</span>);
+              }
+
+              for (let i = start; i <= end; i++) {
+                pages.push(
+                  <button key={i} onClick={() => setCurrentPage(i)}
+                    className={`w-8 h-8 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                      i === safePage
+                        ? 'bg-primary text-white'
+                        : 'text-text-muted hover:bg-surface-2'
+                    }`}>{i}</button>
+                );
+              }
+
+              if (end < totalPages) {
+                if (end < totalPages - 1) pages.push(<span key="end-ellipsis" className="text-text-muted text-xs px-1">…</span>);
+                pages.push(
+                  <button key={totalPages} onClick={() => setCurrentPage(totalPages)}
+                    className="w-8 h-8 rounded-lg text-xs font-medium text-text-muted hover:bg-surface-2 cursor-pointer transition-all">{totalPages}</button>
+                );
+              }
+
+              return pages;
+            })()}
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+              disabled={safePage >= totalPages}
+              className="p-2 rounded-lg border border-border text-text-muted hover:text-text hover:bg-surface-2 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,21 +1,52 @@
-export const SETORES = {
+export const FUNCOES = {
+  master: { label: 'Master', color: '#8b5cf6', icon: 'Crown' },
   financeiro: { label: 'Financeiro', color: '#6366f1', icon: 'DollarSign' },
   documentacao: { label: 'Documentação', color: '#f59e0b', icon: 'FileText' },
   agente: { label: 'Agente', color: '#10b981', icon: 'Shield' },
 };
 
-export const SETOR_CREDENTIALS = {
-  financeiro: { email: 'financeiro@agentsync.com', password: 'financeiro' },
-  documentacao: { email: 'documentacao@agentsync.com', password: 'documento' },
-  agente: { email: 'agente@agentsync.com', password: 'agente' },
+// Map of allowed routes per function
+export const PERMISSION_MAP = {
+  master: [
+    '/dashboard',
+    '/dashboard/importar',
+    '/dashboard/clientes',
+    '/dashboard/inadimplencia',
+    '/dashboard/vendas',
+    '/dashboard/bloqueados',
+    '/dashboard/agente',
+    '/dashboard/colaboradores',
+  ],
+  financeiro: [
+    '/dashboard',
+    '/dashboard/vendas',
+    '/dashboard/inadimplencia',
+    '/dashboard/clientes',
+  ],
+  documentacao: [
+    '/dashboard',
+    '/dashboard/vendas',
+  ],
+  agente: [
+    '/dashboard/bloqueados',
+  ],
+};
+
+// Default redirect per function after login
+export const DEFAULT_ROUTE = {
+  master: '/dashboard',
+  financeiro: '/dashboard',
+  documentacao: '/dashboard',
+  agente: '/dashboard/bloqueados',
 };
 
 export const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard', roles: ['financeiro', 'documentacao'] },
-  { href: '/dashboard/importar', label: 'Importar Dados', icon: 'Upload', roles: ['financeiro'] },
-  { href: '/dashboard/clientes', label: 'Clientes', icon: 'Users', roles: ['financeiro', 'documentacao'] },
-  { href: '/dashboard/inadimplencia', label: 'Inadimplência', icon: 'AlertTriangle', roles: ['financeiro', 'documentacao'] },
-  { href: '/dashboard/vendas', label: 'Vendas', icon: 'ShoppingCart', roles: ['financeiro', 'documentacao'] },
-  { href: '/dashboard/bloqueados', label: 'Bloqueados', icon: 'Lock', roles: ['financeiro', 'documentacao', 'agente'] },
-  { href: '/dashboard/agente', label: 'Agente', icon: 'Shield', roles: ['agente'] },
+  { href: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard', roles: ['master', 'financeiro', 'documentacao'] },
+  { href: '/dashboard/importar', label: 'Importar Dados', icon: 'Upload', roles: ['master'] },
+  { href: '/dashboard/clientes', label: 'Clientes', icon: 'Users', roles: ['master', 'financeiro'] },
+  { href: '/dashboard/inadimplencia', label: 'Inadimplência', icon: 'AlertTriangle', roles: ['master', 'financeiro'] },
+  { href: '/dashboard/vendas', label: 'Vendas', icon: 'ShoppingCart', roles: ['master', 'financeiro', 'documentacao'] },
+  { href: '/dashboard/bloqueados', label: 'Bloqueados', icon: 'Lock', roles: ['master', 'financeiro', 'documentacao', 'agente'] },
+  { href: '/dashboard/agente', label: 'Agente', icon: 'Shield', roles: ['master', 'agente'] },
+  { href: '/dashboard/colaboradores', label: 'Colaboradores', icon: 'UserCog', roles: ['master'] },
 ];

@@ -2,17 +2,19 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useTheme } from '@/hooks/useTheme';
-import { NAV_ITEMS, SETORES } from '@/lib/constants';
+import { FUNCOES } from '@/lib/constants';
 import { 
-  LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users,
-  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon
+  LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog,
+  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown
 } from 'lucide-react';
 
-const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users };
+const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog, Crown };
 
 export default function DashboardLayout({ children }) {
-  const { user, setor, loading, logout, hasRole } = useAuth();
+  const { user, colaborador, loading, logout } = useAuth();
+  const { filteredNavItems, canAccess, isMaster } = usePermissions();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
@@ -24,6 +26,15 @@ export default function DashboardLayout({ children }) {
       router.replace('/login');
     }
   }, [user, loading, router]);
+
+  // Route protection
+  useEffect(() => {
+    if (!loading && user && colaborador && !canAccess(pathname)) {
+      const { DEFAULT_ROUTE } = require('@/lib/constants');
+      const fallback = DEFAULT_ROUTE[colaborador.funcao] || '/dashboard';
+      router.replace(fallback);
+    }
+  }, [pathname, loading, user, colaborador, canAccess, router]);
 
   useEffect(() => {
     const handleOnline = () => setOnline(true);
@@ -45,8 +56,8 @@ export default function DashboardLayout({ children }) {
     );
   }
 
-  const filteredNav = NAV_ITEMS.filter(item => hasRole(item.roles));
-  const setorInfo = SETORES[setor] || { label: setor, color: '#6366f1' };
+  const funcaoInfo = FUNCOES[colaborador?.funcao] || { label: colaborador?.funcao || 'Usuário', color: '#6366f1' };
+  const displayName = colaborador?.nome || user.email;
 
   const handleLogout = async () => {
     await logout();
@@ -78,7 +89,7 @@ export default function DashboardLayout({ children }) {
 
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {filteredNav.map(item => {
+          {filteredNavItems.map(item => {
             const Icon = ICON_MAP[item.icon];
             const isActive = pathname === item.href;
             return (
@@ -91,7 +102,7 @@ export default function DashboardLayout({ children }) {
                     : 'text-text-muted hover:text-text hover:bg-surface-2'
                 }`}
               >
-                <Icon className="w-4.5 h-4.5" />
+                {Icon && <Icon className="w-4.5 h-4.5" />}
                 {item.label}
               </button>
             );
@@ -101,12 +112,15 @@ export default function DashboardLayout({ children }) {
         {/* User / Logout */}
         <div className="p-3 border-t border-border">
           <div className="flex items-center gap-3 px-3 py-2 mb-2">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: setorInfo.color }}>
-              {setorInfo.label.charAt(0)}
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: funcaoInfo.color }}>
+              {displayName.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-text truncate">{setorInfo.label}</p>
-              <p className="text-xs text-text-muted truncate">{user.email}</p>
+              <p className="text-sm font-medium text-text truncate">{displayName}</p>
+              <p className="text-xs text-text-muted truncate">
+                {isMaster && <span className="text-purple-400">★ </span>}
+                {funcaoInfo.label}
+              </p>
             </div>
           </div>
           <button
@@ -148,8 +162,20 @@ export default function DashboardLayout({ children }) {
         <>
           <div className="md:hidden fixed inset-0 bg-black/60 z-40" onClick={() => setSidebarOpen(false)} />
           <aside className="md:hidden fixed top-14 left-0 w-72 h-[calc(100%-3.5rem)] bg-surface border-r border-border z-50 flex flex-col">
+            {/* User Info */}
+            <div className="p-3 border-b border-border">
+              <div className="flex items-center gap-3 px-2 py-1">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: funcaoInfo.color }}>
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-text truncate">{displayName}</p>
+                  <p className="text-xs text-text-muted truncate">{funcaoInfo.label}</p>
+                </div>
+              </div>
+            </div>
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-              {filteredNav.map(item => {
+              {filteredNavItems.map(item => {
                 const Icon = ICON_MAP[item.icon];
                 const isActive = pathname === item.href;
                 return (
@@ -160,7 +186,7 @@ export default function DashboardLayout({ children }) {
                       isActive ? 'bg-primary/10 text-primary' : 'text-text-muted hover:text-text hover:bg-surface-2'
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
+                    {Icon && <Icon className="w-5 h-5" />}
                     {item.label}
                   </button>
                 );
@@ -188,7 +214,7 @@ export default function DashboardLayout({ children }) {
 
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-border flex items-center justify-around h-16 z-40">
-        {filteredNav.slice(0, 5).map(item => {
+        {filteredNavItems.slice(0, 5).map(item => {
           const Icon = ICON_MAP[item.icon];
           const isActive = pathname === item.href;
           return (
@@ -199,7 +225,7 @@ export default function DashboardLayout({ children }) {
                 isActive ? 'text-primary' : 'text-text-muted'
               }`}
             >
-              <Icon className="w-5 h-5" />
+              {Icon && <Icon className="w-5 h-5" />}
               <span className="text-[10px] font-medium">{item.label.split(' ')[0]}</span>
             </button>
           );

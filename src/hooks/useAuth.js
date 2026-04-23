@@ -1,85 +1,117 @@
 'use client';
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [setor, setSetor] = useState(null);
+  const [colaborador, setColaborador] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Fetch colaborador profile from DB
+  const fetchColaborador = useCallback(async (authUser) => {
+    if (!authUser) {
+      setColaborador(null);
+      return null;
+    }
+    const { data, error } = await supabase
+      .from('colaboradores')
+      .select('*')
+      .eq('auth_user_id', authUser.id)
+      .single();
+
+    if (error || !data) {
+      setColaborador(null);
+      return null;
+    }
+    setColaborador(data);
+    return data;
+  }, []);
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
-        setSetor(session.user.user_metadata?.setor || null);
+        await fetchColaborador(session.user);
       }
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        setSetor(session.user.user_metadata?.setor || null);
+        await fetchColaborador(session.user);
       } else {
         setUser(null);
-        setSetor(null);
+        setColaborador(null);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [fetchColaborador]);
 
-  const login = async (setorKey, password) => {
-    const { SETOR_CREDENTIALS } = await import('@/lib/constants');
-    const cred = SETOR_CREDENTIALS[setorKey];
-    if (!cred) throw new Error('Setor inválido');
-
-    if (password !== cred.password.toString()) {
-      throw new Error('Senha incorreta');
-    }
-
+  const login = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: cred.email,
-      password: cred.password,
+      email,
+      password,
     });
 
-    if (error) throw error;
+    if (error) {
+      if (error.message.includes('Invalid login')) {
+        throw new Error('Email ou senha incorretos');
+      }
+      throw error;
+    }
 
-    // Log de login
+    // Fetch colaborador profile
+    const colab = await fetchColaborador(data.user);
+
+    if (!colab) {
+      await supabase.auth.signOut();
+      throw new Error('Colaborador não encontrado no sistema');
+    }
+
+    if (!colab.ativo) {
+      await supabase.auth.signOut();
+      throw new Error('Sua conta está bloqueada. Contate o administrador.');
+    }
+
+    // Audit log
     await supabase.from('audit_logs').insert({
       acao: 'LOGIN',
-      setor: setorKey,
-      detalhes: `Login do setor ${setorKey}`,
+      setor: colab.funcao,
+      detalhes: `Login de ${colab.nome} (${colab.funcao})`,
       user_id: data.user.id,
       user_email: data.user.email,
     });
 
-    return data;
+    return { user: data.user, colaborador: colab };
   };
 
   const logout = async () => {
-    if (user) {
+    if (user && colaborador) {
       await supabase.from('audit_logs').insert({
         acao: 'LOGOUT',
-        setor: setor,
-        detalhes: `Logout do setor ${setor}`,
+        setor: colaborador.funcao,
+        detalhes: `Logout de ${colaborador.nome} (${colaborador.funcao})`,
         user_id: user.id,
         user_email: user.email,
       });
     }
+    setUser(null);
+    setColaborador(null);
     await supabase.auth.signOut();
   };
 
   const hasRole = (roles) => {
-    if (!setor) return false;
-    if (typeof roles === 'string') return setor === roles;
-    return roles.includes(setor);
+    if (!colaborador?.funcao) return false;
+    if (typeof roles === 'string') return colaborador.funcao === roles;
+    return roles.includes(colaborador.funcao);
   };
 
   return (
-    <AuthContext.Provider value={{ user, setor, loading, login, logout, hasRole }}>
+    <AuthContext.Provider value={{ user, colaborador, setor: colaborador?.funcao, loading, login, logout, hasRole }}>
       {children}
     </AuthContext.Provider>
   );
