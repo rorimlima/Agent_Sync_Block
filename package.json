@@ -1,5 +1,5 @@
 {
-  "name": "agent-temp",
+  "name": "agent-sync-block",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,9 +9,16 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.104.1",
+    "@tailwindcss/postcss": "^4.2.4",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^1.8.0",
     "next": "16.2.4",
+    "postcss": "^8.5.10",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "tailwindcss": "^4.2.4",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "eslint": "^9",
