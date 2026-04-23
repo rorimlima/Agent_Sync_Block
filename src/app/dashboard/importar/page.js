@@ -215,6 +215,8 @@ export default function ImportarPage() {
           if (nome) clientNames[cod] = nome;
           const placa = findCol(row, COL_MAP.placa).toUpperCase().replace(/[^A-Z0-9]/g, '');
           const chassi = findCol(row, COL_MAP.chassi).toUpperCase().replace(/[^A-Z0-9]/g, '');
+          // Vendas sem placa e sem chassi são registros inválidos — ignorar
+          if (!placa && !chassi) { errorList.push(`Linha ${i + 2}: sem placa e sem chassi — ignorada`); return; }
           const dateKey = Object.keys(row).find(k => COL_MAP.data_venda.includes(k.toLowerCase().trim()));
           const dateFmt = parseDate(dateKey ? row[dateKey] : '');
           const valorStr = findCol(row, COL_MAP.valor_venda);

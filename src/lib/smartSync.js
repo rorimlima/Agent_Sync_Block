@@ -53,11 +53,10 @@ export async function smartSyncVendas(records, errorList) {
 
     for (const ex of candidates) {
       if (ex._matched) continue;
-      const placaMatch = (rec.placa && ex.placa)
-        ? rec.placa.toUpperCase() === ex.placa.toUpperCase()
-        : (!rec.placa && !ex.placa);
-      const valorMatch = rec.valor_venda_cents === ex.valor_venda_cents;
-      if (placaMatch && valorMatch) { match = ex; break; }
+      // Match por placa OU chassi (pelo menos um identificador deve bater)
+      const placaOk = rec.placa && ex.placa && rec.placa.toUpperCase() === ex.placa.toUpperCase();
+      const chassiOk = rec.chassi && ex.chassi && rec.chassi.toUpperCase() === ex.chassi.toUpperCase();
+      if (placaOk || chassiOk) { match = ex; break; }
     }
 
     if (match) {
