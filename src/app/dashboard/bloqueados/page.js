@@ -33,6 +33,13 @@ export default function BloqueadosPage() {
 
   const currentData = isAgente ? bloqueados : (activeTab === 'bloqueado' ? totalBloqueados : totalParciais);
 
+  // Extrair último dígito numérico da placa (ignora letras)
+  const getLastDigit = (placa) => {
+    if (!placa) return null;
+    const nums = placa.replace(/[^0-9]/g, '');
+    return nums.length > 0 ? nums[nums.length - 1] : null;
+  };
+
   const filtered = currentData.filter(b => {
     const s = search.toLowerCase();
     const matchSearch = !search ||
@@ -40,7 +47,7 @@ export default function BloqueadosPage() {
       b.chassi?.toLowerCase().includes(s) ||
       b.marca_modelo?.toLowerCase().includes(s) ||
       (!isAgente && (b.cod_cliente?.toLowerCase().includes(s) || b.razao_social?.toLowerCase().includes(s)));
-    const matchPlaca = !filterPlaca || b.final_placa === filterPlaca;
+    const matchPlaca = !filterPlaca || getLastDigit(b.placa) === filterPlaca;
     return matchSearch && matchPlaca;
   });
 
