@@ -37,14 +37,12 @@ export default function ImportarPage() {
     endereco: ['endereco', 'endereço', 'rua', 'logradouro', 'endereco_completo'],
     cidade: ['cidade', 'municipio', 'município'],
     estado: ['estado', 'uf'],
-    valor_devido: ['valor_devido', 'saldo', 'saldo_devedor', 'valor_divida'],
-    data_vencimento: ['data_vencimento', 'vencimento', 'dt_vencimento', 'data_venc'],
     data_venda: ['data_venda', 'data', 'dt_venda', 'data_compra', 'notafiscal_dataemissao', 'data_emissao', 'dt_emissao'],
     placa: ['placa', 'placa_veiculo', 'veiculo_placauf', 'placauf'],
     chassi: ['chassi', 'veiculo_chassi', 'chassis', 'nr_chassi', 'num_chassi'],
     marca_modelo: ['marca_modelo', 'veiculo', 'veículo', 'modelo', 'descricao', 'descrição', 'marca', 'carro', 'veiculomodeloveiculo_descricao', 'modelo_veiculo'],
-    valor_venda: ['valor_venda', 'Valor_Venda', 'preco', 'preço', 'valor_total', 'total'],
-    lancamento: ['lancamento', 'lançamento', 'lanc', 'nr_lancamento', 'num_lancamento', 'nro_lancamento', 'lan'],
+    valor_venda: ['valor_venda', 'preco', 'preço', 'valor_total', 'total'],
+    vendedor: ['vendedor', 'notafiscal_usunomvendedor', 'nome_vendedor', 'consultor', 'representante'],
   };
 
   const findCol = (row, aliases) => {
@@ -214,6 +212,7 @@ export default function ImportarPage() {
             chassi: chassi || null,
             marca_modelo: findCol(row, COL_MAP.marca_modelo) || null,
             valor_venda_cents: parseValor(valorRaw),
+            vendedor: findCol(row, COL_MAP.vendedor) || null,
           });
         });
 
@@ -249,7 +248,7 @@ export default function ImportarPage() {
       }
 
       // Pós-sync: Preencher razao_social faltante via tabela clientes
-      if (type === 'vendas' || type === 'inadimplencia') {
+      if (type === 'vendas') {
         await fillMissingRazaoSocial(errorList);
       }
 
