@@ -44,7 +44,7 @@ export default function ImportarPage() {
     placa: ['placa', 'placa_veiculo', 'veiculo_placauf', 'placauf'],
     chassi: ['chassi', 'veiculo_chassi', 'chassis', 'nr_chassi', 'num_chassi'],
     marca_modelo: ['marca_modelo', 'veiculo', 'veículo', 'modelo', 'descricao', 'descrição', 'marca', 'carro', 'veiculomodeloveiculo_descricao', 'modelo_veiculo'],
-    valor_venda: ['valor_venda', 'valor', 'preco', 'preço', 'valor_total', 'total'],
+    valor_venda: ['valor_venda', 'Valor_Venda', 'preco', 'preço', 'valor_total', 'total'],
     lancamento: ['lancamento', 'lançamento', 'lanc', 'nr_lancamento', 'num_lancamento', 'nro_lancamento', 'lan'],
   };
 
