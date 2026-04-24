@@ -8,7 +8,12 @@ import { Upload, Users, AlertTriangle, ShoppingCart, FileSpreadsheet, Check, X, 
 import { formatDateTime } from '@/lib/utils';
 
 export default function ImportarPage() {
-  const { setor, user } = useAuth();
+  const { setor, user, hasRole } = useAuth();
+
+  if (!hasRole(['master', 'financeiro'])) {
+    return <div className="text-center py-20 text-text-muted">Acesso restrito</div>;
+  }
+
   const { data: logs, refetch: refetchLogs } = useRealtime('import_logs', { orderBy: 'created_at', orderAsc: false });
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState(null);
