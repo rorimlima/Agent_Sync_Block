@@ -1,4 +1,4 @@
-import { formatDate } from '@/lib/utils';
+import { formatDateTime } from '@/lib/utils';
 
 /**
  * Gera PDF corporativo de veículos bloqueados e parcialmente bloqueados
@@ -6,10 +6,17 @@ import { formatDate } from '@/lib/utils';
  */
 export async function exportBloqueadosPDF(bloqueados, parciais) {
   const total = bloqueados.length + parciais.length;
-  if (total === 0) return;
+  if (total === 0) { alert('Nenhum veículo bloqueado para exportar.'); return; }
 
-  const { jsPDF } = await import('jspdf');
-  await import('jspdf-autotable');
+  const jsPDFModule = await import('jspdf');
+  const jsPDF = jsPDFModule.jsPDF || jsPDFModule.default;
+  const autoTableModule = await import('jspdf-autotable');
+  const autoTable = autoTableModule.default || autoTableModule.applyPlugin;
+  
+  // Registrar plugin se necessário
+  if (typeof autoTable === 'function' && !jsPDF.prototype.autoTable) {
+    autoTable(jsPDF);
+  }
 
   const doc = new jsPDF('landscape', 'mm', 'a4');
   const pageW = doc.internal.pageSize.getWidth();
@@ -174,7 +181,7 @@ export async function exportBloqueadosPDF(bloqueados, parciais) {
         b.razao_social || b.cod_cliente || '-',
         b.status_financeiro || '-',
         b.status_documentacao || '-',
-        b.bloqueado_em ? formatDate(b.bloqueado_em) : '-',
+        b.bloqueado_em ? formatDateTime(b.bloqueado_em) : '-',
       ]),
       styles: { fontSize: 7, cellPadding: 2.5, lineColor: [200, 210, 225], lineWidth: 0.2, textColor: [30, 41, 59], font: 'helvetica' },
       headStyles: { fillColor: [185, 28, 28], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5, cellPadding: 3 },

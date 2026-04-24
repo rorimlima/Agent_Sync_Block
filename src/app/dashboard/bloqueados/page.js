@@ -190,7 +190,14 @@ export default function BloqueadosPage() {
         </div>
         {!isAgente && (
           <div className="flex gap-2">
-            <button onClick={() => exportBloqueadosPDF(totalBloqueados, totalParciais)}
+            <button onClick={async () => {
+                try {
+                  await exportBloqueadosPDF(totalBloqueados, totalParciais);
+                } catch (err) {
+                  console.error('Erro ao gerar PDF:', err);
+                  alert('Erro ao gerar PDF: ' + err.message);
+                }
+              }}
               className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary text-xs rounded-xl hover:bg-primary/20 transition-all cursor-pointer">
               <FileDown className="w-4 h-4" /> Exportar PDF
             </button>
