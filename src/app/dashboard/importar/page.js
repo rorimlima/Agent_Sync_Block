@@ -1,10 +1,10 @@
 'use client';
 import { useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { smartSyncVendas, smartSyncInadimplencia, fillMissingRazaoSocial } from '@/lib/smartSync';
+import { smartSyncVendas, fillMissingRazaoSocial } from '@/lib/smartSync';
 import { useAuth } from '@/hooks/useAuth';
 import { useRealtime } from '@/hooks/useRealtime';
-import { Upload, Users, AlertTriangle, ShoppingCart, FileSpreadsheet, Check, X, Loader2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { Upload, Users, ShoppingCart, FileSpreadsheet, Check, X, Loader2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 
 export default function ImportarPage() {
@@ -24,7 +24,6 @@ export default function ImportarPage() {
 
   const IMPORT_TYPES = [
     { key: 'clientes', label: 'Importar Clientes', icon: Users, color: 'text-primary', bg: 'bg-primary/10' },
-    { key: 'inadimplencia', label: 'Importar Inadimplência', icon: AlertTriangle, color: 'text-danger', bg: 'bg-danger/10' },
     { key: 'vendas', label: 'Importar Vendas', icon: ShoppingCart, color: 'text-success', bg: 'bg-success/10' },
   ];
 
@@ -38,7 +37,7 @@ export default function ImportarPage() {
     endereco: ['endereco', 'endereço', 'rua', 'logradouro', 'endereco_completo'],
     cidade: ['cidade', 'municipio', 'município'],
     estado: ['estado', 'uf'],
-    valor_devido: ['valor_devido', 'valor', 'valor_divida', 'saldo', 'saldo_devedor', 'total', 'valor_total'],
+    valor_devido: ['valor_devido', 'saldo', 'saldo_devedor', 'valor_divida'],
     data_vencimento: ['data_vencimento', 'vencimento', 'dt_vencimento', 'data_venc'],
     data_venda: ['data_venda', 'data', 'dt_venda', 'data_compra', 'notafiscal_dataemissao', 'data_emissao', 'dt_emissao'],
     placa: ['placa', 'placa_veiculo', 'veiculo_placauf', 'placauf'],
@@ -189,58 +188,6 @@ export default function ImportarPage() {
           }
         }
 
-      } else if (type === 'inadimplencia') {
-        const records = [];
-        const clientCods = new Set();
-        const clientNames = {};
-        rows.forEach((row, i) => {
-          const cod = findCol(row, COL_MAP.cod_cliente);
-          if (!cod) { errorList.push(`Linha ${i + 2}: cod_cliente vazio — ignorada`); return; }
-          clientCods.add(cod);
-          const nome = findCol(row, COL_MAP.razao_social);
-          if (nome) clientNames[cod] = nome;
-          const valorRaw = findColRaw(row, COL_MAP.valor_devido);
-          const dateKey = Object.keys(row).find(k => COL_MAP.data_vencimento.includes(k.toLowerCase().trim()));
-          const dateFmt = parseDate(dateKey ? row[dateKey] : '');
-          records.push({
-            cod_cliente: cod,
-            razao_social: nome || null,
-            cpf_cnpj: findCol(row, COL_MAP.cpf_cnpj) || null,
-            valor_devido_cents: parseValor(valorRaw),
-            data_vencimento: dateFmt,
-            lancamento: findCol(row, COL_MAP.lancamento) || null,
-          });
-        });
-
-        // Buscar nomes de clientes existentes para registros sem nome
-        if (records.some(r => !r.razao_social)) {
-          const codsSemNome = [...new Set(records.filter(r => !r.razao_social).map(r => r.cod_cliente))];
-          for (let i = 0; i < codsSemNome.length; i += 50) {
-            const batch = codsSemNome.slice(i, i + 50);
-            const { data: clis } = await supabase.from('clientes').select('cod_cliente, razao_social').in('cod_cliente', batch);
-            (clis || []).forEach(c => { if (c.razao_social) clientNames[c.cod_cliente] = c.razao_social; });
-          }
-          records.forEach(r => { if (!r.razao_social && clientNames[r.cod_cliente]) r.razao_social = clientNames[r.cod_cliente]; });
-        }
-
-        // Auto-criar clientes que não existem (FK obrigatória)
-        if (clientCods.size > 0) {
-          const autoClients = [...clientCods].map(cod => ({
-            cod_cliente: cod,
-            razao_social: `Cliente ${cod}`,
-          }));
-          for (let i = 0; i < autoClients.length; i += 50) {
-            const batch = autoClients.slice(i, i + 50);
-            const { error: cliErr } = await supabase
-              .from('clientes')
-              .upsert(batch, { onConflict: 'cod_cliente', ignoreDuplicates: true });
-            if (cliErr) errorList.push(`Auto-clientes batch ${Math.floor(i / 50) + 1}: ${cliErr.message}`);
-          }
-        }
-
-        // Smart Sync — merge inteligente (não duplica, preenche vazios)
-        syncInfo = await smartSyncInadimplencia(records, errorList);
-        count = syncInfo.inserted + syncInfo.updated;
 
       } else if (type === 'vendas') {
         const records = [];
