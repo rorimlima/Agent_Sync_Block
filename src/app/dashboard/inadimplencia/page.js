@@ -24,7 +24,7 @@ export default function InadimplenciaPage() {
   const [clientInadList, setClientInadList] = useState([]);
   const [showModal, setShowModal] = useState(false);
 
-  if (!hasRole(['financeiro', 'documentacao'])) {
+  if (!hasRole(['master', 'financeiro', 'documentacao'])) {
     return <div className="text-center py-20 text-text-muted">Acesso restrito</div>;
   }
 

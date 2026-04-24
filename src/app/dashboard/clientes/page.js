@@ -23,7 +23,7 @@ export default function ClientesPage() {
   const [clientVendas, setClientVendas] = useState([]);
   const [clientInad, setClientInad] = useState([]);
 
-  if (!hasRole(['financeiro', 'documentacao'])) {
+  if (!hasRole(['master', 'financeiro', 'documentacao'])) {
     return <div className="text-center py-20 text-text-muted">Acesso restrito</div>;
   }
 

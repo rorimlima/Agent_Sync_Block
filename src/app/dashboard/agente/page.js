@@ -17,7 +17,7 @@ export default function AgentePage() {
   const [sending, setSending] = useState(false);
   const fileRef = useRef(null);
 
-  if (!hasRole('agente')) {
+  if (!hasRole(['master', 'agente'])) {
     return <div className="text-center py-20 text-text-muted">Acesso restrito ao Agente</div>;
   }
 
