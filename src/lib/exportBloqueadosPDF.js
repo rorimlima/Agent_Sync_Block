@@ -10,13 +10,7 @@ export async function exportBloqueadosPDF(bloqueados, parciais) {
 
   const jsPDFModule = await import('jspdf');
   const jsPDF = jsPDFModule.jsPDF || jsPDFModule.default;
-  const autoTableModule = await import('jspdf-autotable');
-  const autoTable = autoTableModule.default || autoTableModule.applyPlugin;
-  
-  // Registrar plugin se necessário
-  if (typeof autoTable === 'function' && !jsPDF.prototype.autoTable) {
-    autoTable(jsPDF);
-  }
+  const { default: autoTable } = await import('jspdf-autotable');
 
   const doc = new jsPDF('landscape', 'mm', 'a4');
   const pageW = doc.internal.pageSize.getWidth();
@@ -138,8 +132,8 @@ export async function exportBloqueadosPDF(bloqueados, parciais) {
   doc.text('DISTRIBUIÇÃO POR SETOR', 14, y + 4);
   y += 8;
 
-  // Tabela de resumo por setor
-  doc.autoTable({
+  // Tabela de resumo por setor — jspdf-autotable v5: autoTable(doc, options)
+  autoTable(doc, {
     startY: y,
     margin: { left: 14, right: 14 },
     head: [['Setor', 'Bloqueio Total', 'Bloqueio Parcial', 'Total Envolvidos']],
@@ -166,10 +160,10 @@ export async function exportBloqueadosPDF(bloqueados, parciais) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(185, 28, 28);
-    doc.text(`⚠ ${bloqueados.length} VEÍCULO(S) COM BLOQUEIO TOTAL (FINANCEIRO + DOCUMENTAÇÃO)`, pageW / 2, startY + 6.5, { align: 'center' });
+    doc.text(`${bloqueados.length} VEICULO(S) COM BLOQUEIO TOTAL (FINANCEIRO + DOCUMENTACAO)`, pageW / 2, startY + 6.5, { align: 'center' });
     startY += 14;
 
-    doc.autoTable({
+    autoTable(doc, {
       startY,
       margin: { left: 14, right: 14 },
       head: [['#', 'Placa', 'Chassi', 'Marca/Modelo', 'Cliente', 'Financeiro', 'Documentação', 'Data Bloqueio']],
@@ -192,7 +186,6 @@ export async function exportBloqueadosPDF(bloqueados, parciais) {
         5: { halign: 'center', textColor: [185, 28, 28], fontStyle: 'bold' },
         6: { halign: 'center', textColor: [185, 28, 28], fontStyle: 'bold' },
       },
-      didDrawPage: () => {},
     });
   }
 
@@ -208,10 +201,10 @@ export async function exportBloqueadosPDF(bloqueados, parciais) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(146, 64, 14);
-    doc.text(`⚠ ${parciais.length} VEÍCULO(S) COM BLOQUEIO PARCIAL (APENAS 1 SETOR)`, pageW / 2, startY + 6.5, { align: 'center' });
+    doc.text(`${parciais.length} VEICULO(S) COM BLOQUEIO PARCIAL (APENAS 1 SETOR)`, pageW / 2, startY + 6.5, { align: 'center' });
     startY += 14;
 
-    doc.autoTable({
+    autoTable(doc, {
       startY,
       margin: { left: 14, right: 14 },
       head: [['#', 'Placa', 'Chassi', 'Marca/Modelo', 'Cliente', 'Financeiro', 'Documentação', 'Setor Pendente']],
@@ -238,7 +231,6 @@ export async function exportBloqueadosPDF(bloqueados, parciais) {
         6: { halign: 'center' },
         7: { halign: 'center', fontStyle: 'bold', textColor: [146, 64, 14] },
       },
-      didDrawPage: () => {},
     });
   }
 
