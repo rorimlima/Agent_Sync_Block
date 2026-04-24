@@ -89,6 +89,22 @@ export function AuthProvider({ children }) {
     return { user: data.user, colaborador: colab };
   };
 
+  const changePassword = async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+
+    // Audit log
+    if (user && colaborador) {
+      await supabase.from('audit_logs').insert({
+        acao: 'TROCA_SENHA',
+        setor: colaborador.funcao,
+        detalhes: `${colaborador.nome} alterou a própria senha`,
+        user_id: user.id,
+        user_email: user.email,
+      });
+    }
+  };
+
   const logout = async () => {
     if (user && colaborador) {
       await supabase.from('audit_logs').insert({
@@ -111,7 +127,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, colaborador, setor: colaborador?.funcao, loading, login, logout, hasRole }}>
+    <AuthContext.Provider value={{ user, colaborador, setor: colaborador?.funcao, loading, login, logout, hasRole, changePassword }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -7,19 +7,53 @@ import { useTheme } from '@/hooks/useTheme';
 import { FUNCOES } from '@/lib/constants';
 import { 
   LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog,
-  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown
+  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown, KeyRound, Eye, EyeOff, CheckCircle2
 } from 'lucide-react';
 
 const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog, Crown };
 
 export default function DashboardLayout({ children }) {
-  const { user, colaborador, loading, logout } = useAuth();
+  const { user, colaborador, loading, logout, changePassword } = useAuth();
   const { filteredNavItems, canAccess, isMaster } = usePermissions();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [online, setOnline] = useState(true);
+
+  // Change Password Modal
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [cpNewPwd, setCpNewPwd] = useState('');
+  const [cpConfirmPwd, setCpConfirmPwd] = useState('');
+  const [cpShowNew, setCpShowNew] = useState(false);
+  const [cpShowConfirm, setCpShowConfirm] = useState(false);
+  const [cpLoading, setCpLoading] = useState(false);
+  const [cpError, setCpError] = useState('');
+  const [cpSuccess, setCpSuccess] = useState(false);
+
+  const openChangePwd = () => {
+    setCpNewPwd(''); setCpConfirmPwd('');
+    setCpError(''); setCpSuccess(false);
+    setCpLoading(false);
+    setShowChangePassword(true);
+    setSidebarOpen(false);
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (cpNewPwd.length < 6) { setCpError('A senha deve ter pelo menos 6 caracteres.'); return; }
+    if (cpNewPwd !== cpConfirmPwd) { setCpError('As senhas não coincidem.'); return; }
+    setCpLoading(true); setCpError('');
+    try {
+      await changePassword(cpNewPwd);
+      setCpSuccess(true);
+      setTimeout(() => setShowChangePassword(false), 2000);
+    } catch (err) {
+      setCpError(err.message || 'Erro ao alterar senha.');
+    } finally {
+      setCpLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -131,6 +165,13 @@ export default function DashboardLayout({ children }) {
             {theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
           </button>
           <button
+            onClick={openChangePwd}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-text-muted hover:text-primary hover:bg-primary/5 transition-all cursor-pointer mb-1"
+          >
+            <KeyRound className="w-4.5 h-4.5" />
+            Mudar Senha
+          </button>
+          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-text-muted hover:text-danger hover:bg-danger/5 transition-all cursor-pointer"
           >
@@ -194,6 +235,13 @@ export default function DashboardLayout({ children }) {
             </nav>
             <div className="p-3 border-t border-border">
               <button
+                onClick={openChangePwd}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-text-muted hover:text-primary hover:bg-primary/5 transition-all cursor-pointer mb-1"
+              >
+                <KeyRound className="w-5 h-5" />
+                Mudar Senha
+              </button>
+              <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-text-muted hover:text-danger hover:bg-danger/5 transition-all cursor-pointer"
               >
@@ -211,6 +259,116 @@ export default function DashboardLayout({ children }) {
           {children}
         </div>
       </main>
+
+      {/* Change Password Modal */}
+      {showChangePassword && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && setShowChangePassword(false)}>
+          <div className="w-full max-w-md bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center">
+                  <KeyRound className="w-4.5 h-4.5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-text">Mudar Senha</h2>
+                  <p className="text-xs text-text-muted">Defina uma nova senha para sua conta</p>
+                </div>
+              </div>
+              <button onClick={() => setShowChangePassword(false)} className="text-text-muted hover:text-text transition-colors cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <form onSubmit={handleChangePassword} className="p-5 space-y-4">
+              {cpSuccess ? (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <div className="w-14 h-14 rounded-full bg-success/20 flex items-center justify-center">
+                    <CheckCircle2 className="w-7 h-7 text-success" />
+                  </div>
+                  <p className="text-base font-semibold text-text">Senha alterada!</p>
+                  <p className="text-sm text-text-muted text-center">Sua senha foi atualizada com sucesso.</p>
+                </div>
+              ) : (
+                <>
+                  {/* New Password */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-text-muted">Nova Senha</label>
+                    <div className="relative">
+                      <input
+                        type={cpShowNew ? 'text' : 'password'}
+                        value={cpNewPwd}
+                        onChange={(e) => { setCpNewPwd(e.target.value); setCpError(''); }}
+                        placeholder="Mínimo 6 caracteres"
+                        required
+                        className="w-full px-4 py-2.5 pr-10 rounded-xl bg-bg border border-border text-sm text-text placeholder-text-muted focus:outline-none focus:border-primary transition-colors"
+                      />
+                      <button type="button" onClick={() => setCpShowNew(!cpShowNew)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text cursor-pointer">
+                        {cpShowNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Confirm Password */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-text-muted">Confirmar Nova Senha</label>
+                    <div className="relative">
+                      <input
+                        type={cpShowConfirm ? 'text' : 'password'}
+                        value={cpConfirmPwd}
+                        onChange={(e) => { setCpConfirmPwd(e.target.value); setCpError(''); }}
+                        placeholder="Repita a nova senha"
+                        required
+                        className="w-full px-4 py-2.5 pr-10 rounded-xl bg-bg border border-border text-sm text-text placeholder-text-muted focus:outline-none focus:border-primary transition-colors"
+                      />
+                      <button type="button" onClick={() => setCpShowConfirm(!cpShowConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text cursor-pointer">
+                        {cpShowConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Password strength hint */}
+                  {cpNewPwd.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${
+                          cpNewPwd.length >= (i + 1) * 2
+                            ? cpNewPwd.length < 8 ? 'bg-warning' : 'bg-success'
+                            : 'bg-border'
+                        }`} />
+                      ))}
+                      <span className="text-xs text-text-muted ml-1">
+                        {cpNewPwd.length < 6 ? 'Fraca' : cpNewPwd.length < 10 ? 'Média' : 'Forte'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Error */}
+                  {cpError && (
+                    <p className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3 py-2">{cpError}</p>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-1">
+                    <button type="button" onClick={() => setShowChangePassword(false)}
+                      className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-text-muted hover:bg-surface-2 transition-all cursor-pointer">
+                      Cancelar
+                    </button>
+                    <button type="submit" disabled={cpLoading}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2">
+                      {cpLoading ? (
+                        <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Alterando...</>
+                      ) : 'Alterar Senha'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
+
 
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-border flex items-center justify-around h-16 z-40">
