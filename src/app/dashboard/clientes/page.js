@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useStats } from '@/hooks/useRealtime';
 import { formatCurrency } from '@/lib/utils';
 import { exportToCSV } from '@/lib/export';
-import { Users, Search, Eye, X, Download, ShoppingCart, AlertTriangle, Phone, Mail, MapPin, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Users, Search, Eye, X, Download, ShoppingCart, Phone, Mail, MapPin, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 50;
 
@@ -21,7 +21,6 @@ export default function ClientesPage() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [clientVendas, setClientVendas] = useState([]);
-  const [clientInad, setClientInad] = useState([]);
 
   if (!hasRole(['master', 'financeiro', 'documentacao'])) {
     return <div className="text-center py-20 text-text-muted">Acesso restrito</div>;
@@ -55,36 +54,22 @@ export default function ClientesPage() {
     }
   }, []);
 
-  // Buscar totais de vendas e inadimplência para os clientes exibidos na página
+  // Buscar totais de vendas para os clientes exibidos na página
   const [aggregates, setAggregates] = useState({});
 
   const fetchAggregates = useCallback(async (clientList) => {
     if (!clientList.length) { setAggregates({}); return; }
     const cods = clientList.map(c => c.cod_cliente);
 
-    const [{ data: vendasAgg }, { data: inadAgg }] = await Promise.all([
-      supabase.from('vendas').select('cod_cliente, valor_venda_cents').in('cod_cliente', cods),
-      supabase.from('inadimplencia').select('cod_cliente, valor_devido_cents, status_alerta').in('cod_cliente', cods),
-    ]);
+    const { data: vendasAgg } = await supabase.from('vendas').select('cod_cliente, valor_venda_cents').in('cod_cliente', cods);
 
     const agg = {};
-    cods.forEach(cod => { agg[cod] = { vendas_total: 0, vendas_count: 0, inad_total: 0, inad_count: 0, pior_alerta: null }; });
+    cods.forEach(cod => { agg[cod] = { vendas_total: 0, vendas_count: 0 }; });
 
     (vendasAgg || []).forEach(v => {
       if (agg[v.cod_cliente]) {
         agg[v.cod_cliente].vendas_total += (v.valor_venda_cents || 0);
         agg[v.cod_cliente].vendas_count += 1;
-      }
-    });
-
-    const priority = { EMERGENCIA: 3, ATENCAO: 2, LEMBRETE: 1, NORMAL: 0 };
-    (inadAgg || []).forEach(i => {
-      if (agg[i.cod_cliente]) {
-        agg[i.cod_cliente].inad_total += (i.valor_devido_cents || 0);
-        agg[i.cod_cliente].inad_count += 1;
-        const cur = priority[i.status_alerta] || 0;
-        const prev = priority[agg[i.cod_cliente].pior_alerta] || 0;
-        if (cur > prev) agg[i.cod_cliente].pior_alerta = i.status_alerta;
       }
     });
 
@@ -114,22 +99,8 @@ export default function ClientesPage() {
   const openDetail = async (client) => {
     setSelectedClient(client);
     setShowModal(true);
-    // Buscar vendas e inadimplência detalhadas desse cliente
-    const [{ data: v }, { data: i }] = await Promise.all([
-      supabase.from('vendas').select('*').eq('cod_cliente', client.cod_cliente).order('data_venda', { ascending: false }),
-      supabase.from('inadimplencia').select('*').eq('cod_cliente', client.cod_cliente).order('data_vencimento', { ascending: false }),
-    ]);
+    const { data: v } = await supabase.from('vendas').select('*').eq('cod_cliente', client.cod_cliente).order('data_venda', { ascending: false });
     setClientVendas(v || []);
-    setClientInad(i || []);
-  };
-
-  const alertBadge = (status) => {
-    const map = {
-      EMERGENCIA: { label: '🔴 Emergência', cls: 'badge-emergencia' },
-      ATENCAO: { label: '🟠 Atenção', cls: 'badge-atencao' },
-      LEMBRETE: { label: '🟡 Lembrete', cls: 'badge-lembrete' },
-    };
-    return map[status] || null;
   };
 
   return (
@@ -142,14 +113,12 @@ export default function ClientesPage() {
           <p className="text-text-muted text-sm mt-1">{totalCount.toLocaleString('pt-BR')} clientes {search ? 'encontrados' : 'cadastrados'}</p>
         </div>
         <button onClick={() => {
-          // Exportar a página atual
           const rows = clientes.map(c => {
             const a = aggregates[c.cod_cliente] || {};
             return {
               cod_cliente: c.cod_cliente, razao_social: c.razao_social, cpf_cnpj: c.cpf_cnpj || '',
               celular: c.celular || '', email: c.email || '', cidade: c.cidade || '', estado: c.estado || '',
               total_vendas_cents: a.vendas_total || 0, qtd_vendas: a.vendas_count || 0,
-              total_devido_cents: a.inad_total || 0, qtd_inadimplencia: a.inad_count || 0,
             };
           });
           exportToCSV(rows, [
@@ -158,8 +127,6 @@ export default function ClientesPage() {
             { key: 'email', label: 'Email' }, { key: 'cidade', label: 'Cidade' },
             { key: 'total_vendas_cents', label: 'Total Vendas', format: 'currency' },
             { key: 'qtd_vendas', label: 'Qtd Vendas' },
-            { key: 'total_devido_cents', label: 'Total Devedor', format: 'currency' },
-            { key: 'qtd_inadimplencia', label: 'Qtd Inadimplência' },
           ], 'clientes');
         }} className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary text-xs rounded-xl hover:bg-primary/20 transition-all cursor-pointer">
           <Download className="w-4 h-4" /> Exportar CSV
@@ -167,7 +134,7 @@ export default function ClientesPage() {
       </div>
 
       {/* Resumo Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div className="glass-card p-4 border border-primary/20">
           <p className="text-xs text-text-muted">Total Clientes</p>
           <p className="text-lg font-bold text-primary">{stats.clientes.toLocaleString('pt-BR')}</p>
@@ -176,13 +143,9 @@ export default function ClientesPage() {
           <p className="text-xs text-text-muted">Total em Vendas</p>
           <p className="text-lg font-bold text-success">{formatCurrency(stats.total_vendas_cents)}</p>
         </div>
-        <div className="glass-card p-4 border border-danger/20">
-          <p className="text-xs text-text-muted">Total Devedor</p>
-          <p className="text-lg font-bold text-danger">{formatCurrency(stats.total_inadimplente_cents)}</p>
-        </div>
         <div className="glass-card p-4 border border-warning/20">
-          <p className="text-xs text-text-muted">Com Inadimplência</p>
-          <p className="text-lg font-bold text-warning">{stats.com_inadimplencia}</p>
+          <p className="text-xs text-text-muted">Vendas Registradas</p>
+          <p className="text-lg font-bold text-warning">{stats.vendas.toLocaleString('pt-BR')}</p>
         </div>
       </div>
 
@@ -213,29 +176,18 @@ export default function ClientesPage() {
                   <th className="text-left py-3 px-4 text-text-muted font-medium">Razão Social</th>
                   <th className="text-left py-3 px-4 text-text-muted font-medium">CPF/CNPJ</th>
                   <th className="text-right py-3 px-4 text-text-muted font-medium">Total Vendas</th>
-                  <th className="text-right py-3 px-4 text-text-muted font-medium">Total Devedor</th>
-                  <th className="text-center py-3 px-4 text-text-muted font-medium">Status</th>
                   <th className="text-center py-3 px-4 text-text-muted font-medium">Ação</th>
                 </tr>
               </thead>
               <tbody>
                 {clientes.map(c => {
                   const a = aggregates[c.cod_cliente] || {};
-                  const badge = alertBadge(a.pior_alerta);
                   return (
                     <tr key={c.id} className="border-b border-border/50 hover:bg-surface-2/30 transition-colors">
                       <td className="py-3 px-4 text-text font-mono font-bold">{c.cod_cliente}</td>
                       <td className="py-3 px-4 text-text">{c.razao_social}</td>
                       <td className="py-3 px-4 text-text-muted text-xs">{c.cpf_cnpj || '-'}</td>
                       <td className="py-3 px-4 text-right text-success font-medium">{a.vendas_total ? formatCurrency(a.vendas_total) : '-'}</td>
-                      <td className="py-3 px-4 text-right text-danger font-medium">{a.inad_total ? formatCurrency(a.inad_total) : '-'}</td>
-                      <td className="py-3 px-4 text-center">
-                        {badge ? (
-                          <span className={`text-xs px-2 py-1 rounded-lg ${badge.cls}`}>{badge.label}</span>
-                        ) : (
-                          <span className="text-xs text-success">✅ OK</span>
-                        )}
-                      </td>
                       <td className="py-3 px-4 text-center">
                         <button onClick={() => openDetail(c)} className="px-3 py-1.5 bg-primary/10 text-primary text-xs rounded-lg hover:bg-primary/20 transition-all cursor-pointer">
                           <Eye className="w-3 h-3 inline mr-1" /> Detalhes
@@ -252,23 +204,15 @@ export default function ClientesPage() {
           <div className="md:hidden space-y-2">
             {clientes.map(c => {
               const a = aggregates[c.cod_cliente] || {};
-              const badge = alertBadge(a.pior_alerta);
               return (
                 <button key={c.id} onClick={() => openDetail(c)} className="w-full glass-card p-4 text-left cursor-pointer hover:border-primary/30 transition-all">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-bold text-text font-mono">{c.cod_cliente}</span>
-                    {badge ? (
-                      <span className={`text-xs px-2 py-0.5 rounded-lg ${badge.cls}`}>{badge.label}</span>
-                    ) : a.vendas_count > 0 ? (
-                      <span className="text-xs text-success">✅ OK</span>
-                    ) : null}
+                    {a.vendas_count > 0 && <span className="text-xs text-success">✅ {a.vendas_count} vendas</span>}
                   </div>
                   <p className="text-sm text-text font-medium truncate">{c.razao_social}</p>
                   <p className="text-xs text-text-muted">{c.cpf_cnpj || 'Sem documento'}</p>
-                  <div className="flex gap-4 mt-2 text-xs">
-                    {a.vendas_total > 0 && <span className="text-success">Vendas: {formatCurrency(a.vendas_total)}</span>}
-                    {a.inad_total > 0 && <span className="text-danger">Deve: {formatCurrency(a.inad_total)}</span>}
-                  </div>
+                  {a.vendas_total > 0 && <p className="text-xs text-success mt-1">Vendas: {formatCurrency(a.vendas_total)}</p>}
                 </button>
               );
             })}
@@ -340,18 +284,11 @@ export default function ClientesPage() {
               </div>
             </div>
 
-            {/* Cards de Totais */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="p-3 bg-success/5 border border-success/20 rounded-xl text-center">
-                <ShoppingCart className="w-4 h-4 text-success mx-auto mb-1" />
-                <p className="text-lg font-bold text-success">{formatCurrency(clientVendas.reduce((a, v) => a + (v.valor_venda_cents || 0), 0))}</p>
-                <p className="text-xs text-text-muted">{clientVendas.length} vendas</p>
-              </div>
-              <div className="p-3 bg-danger/5 border border-danger/20 rounded-xl text-center">
-                <AlertTriangle className="w-4 h-4 text-danger mx-auto mb-1" />
-                <p className="text-lg font-bold text-danger">{formatCurrency(clientInad.reduce((a, i) => a + (i.valor_devido_cents || 0), 0))}</p>
-                <p className="text-xs text-text-muted">{clientInad.length} parcelas</p>
-              </div>
+            {/* Card Total Vendas */}
+            <div className="p-3 bg-success/5 border border-success/20 rounded-xl text-center mb-4">
+              <ShoppingCart className="w-4 h-4 text-success mx-auto mb-1" />
+              <p className="text-lg font-bold text-success">{formatCurrency(clientVendas.reduce((a, v) => a + (v.valor_venda_cents || 0), 0))}</p>
+              <p className="text-xs text-text-muted">{clientVendas.length} vendas</p>
             </div>
 
             {/* Veículos vinculados */}
@@ -376,33 +313,6 @@ export default function ClientesPage() {
                 </div>
               )}
             </div>
-
-            {/* Inadimplências vinculadas */}
-            {clientInad.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm font-semibold text-text mb-2">Inadimplências</p>
-                <div className="space-y-2">
-                  {clientInad.map(i => (
-                    <div key={i.id} className="p-3 bg-danger/5 rounded-xl border border-danger/20">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-danger">{formatCurrency(i.valor_devido_cents)}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-lg ${
-                          i.status_alerta === 'EMERGENCIA' ? 'badge-emergencia' :
-                          i.status_alerta === 'ATENCAO' ? 'badge-atencao' :
-                          i.status_alerta === 'LEMBRETE' ? 'badge-lembrete' : 'badge-normal'
-                        }`}>
-                          {i.status_alerta}
-                        </span>
-                      </div>
-                      <p className="text-xs text-text-muted mt-1">
-                        Vencimento: {i.data_vencimento ? new Date(i.data_vencimento + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
-                        {i.dias_atraso > 0 && <span className="text-danger ml-2">({i.dias_atraso} dias atraso)</span>}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

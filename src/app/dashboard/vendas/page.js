@@ -15,6 +15,7 @@ export default function VendasPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterBloqueio, setFilterBloqueio] = useState('');
+  const [filterFinalPlaca, setFilterFinalPlaca] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [loadingId, setLoadingId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -38,17 +39,24 @@ export default function VendasPage() {
   }
 
   // Stable filtered data using useMemo to avoid recalc on unrelated renders
+  // Extrair último dígito numérico da placa
+  const getPlacaFinalDigit = (placa) => {
+    if (!placa) return null;
+    const nums = placa.replace(/[^0-9]/g, '');
+    return nums.length > 0 ? nums[nums.length - 1] : null;
+  };
+
   const filtered = useMemo(() => {
     const s = debouncedSearch.trim().toLowerCase();
     return vendas.filter(v => {
-      // Search filter
+      // Search filter — prioridade: placa e chassi primeiro
       let matchSearch = true;
       if (s) {
         matchSearch =
-          (v.cod_cliente && v.cod_cliente.toLowerCase().includes(s)) ||
-          (v.razao_social && v.razao_social.toLowerCase().includes(s)) ||
           (v.placa && v.placa.toLowerCase().includes(s)) ||
           (v.chassi && v.chassi.toLowerCase().includes(s)) ||
+          (v.cod_cliente && v.cod_cliente.toLowerCase().includes(s)) ||
+          (v.razao_social && v.razao_social.toLowerCase().includes(s)) ||
           (v.marca_modelo && v.marca_modelo.toLowerCase().includes(s));
       }
 
@@ -59,9 +67,15 @@ export default function VendasPage() {
       else if (filterBloqueio === 'bloq_doc') matchBloqueio = v.bloqueio_documentacao === true;
       else if (filterBloqueio === 'livre') matchBloqueio = !v.bloqueio_financeiro && !v.bloqueio_documentacao;
 
-      return matchSearch && matchBloqueio;
+      // Final de placa filter
+      let matchFinalPlaca = true;
+      if (filterFinalPlaca !== '') {
+        matchFinalPlaca = getPlacaFinalDigit(v.placa) === filterFinalPlaca;
+      }
+
+      return matchSearch && matchBloqueio && matchFinalPlaca;
     });
-  }, [vendas, debouncedSearch, filterBloqueio]);
+  }, [vendas, debouncedSearch, filterBloqueio, filterFinalPlaca]);
 
   // Paginated data
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -171,7 +185,7 @@ export default function VendasPage() {
     }
   };
 
-  const activeFilters = [filterBloqueio].filter(Boolean).length;
+  const activeFilters = [filterBloqueio, filterFinalPlaca].filter(Boolean).length;
 
   const BloqueioBtn = ({ venda, tipo }) => {
     const field = tipo === 'financeiro' ? 'bloqueio_financeiro' : 'bloqueio_documentacao';
@@ -244,7 +258,7 @@ export default function VendasPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por placa, chassi, razão social, código, modelo..."
+            placeholder="Buscar por placa, chassi, código, razão social, modelo..."
             className="w-full pl-10 pr-10 py-2.5 bg-surface border border-border rounded-xl text-sm text-text placeholder-text-muted focus:outline-none focus:border-primary transition-colors" />
           {search && (
             <button onClick={() => setSearch('')}
@@ -271,8 +285,13 @@ export default function VendasPage() {
             <option value="bloq_doc">🔒 Bloq. Documentação</option>
             <option value="livre">✅ Livre</option>
           </select>
+          <select value={filterFinalPlaca} onChange={e => setFilterFinalPlaca(e.target.value)}
+            className="px-3 py-2 bg-surface border border-border rounded-xl text-sm text-text focus:outline-none focus:border-primary">
+            <option value="">Final de placa</option>
+            {[0,1,2,3,4,5,6,7,8,9].map(n => <option key={n} value={String(n)}>Final {n}</option>)}
+          </select>
           {activeFilters > 0 && (
-            <button onClick={() => setFilterBloqueio('')}
+            <button onClick={() => { setFilterBloqueio(''); setFilterFinalPlaca(''); }}
               className="flex items-center gap-1 px-3 py-2 text-xs text-danger bg-danger/10 rounded-xl hover:bg-danger/20 cursor-pointer transition-all">
               <X className="w-3 h-3" /> Limpar filtros
             </button>

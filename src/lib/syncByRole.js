@@ -5,8 +5,8 @@
 
 // Tabelas que cada role precisa sincronizar para offline
 export const ROLE_TABLES = {
-  master: ['clientes', 'vendas', 'inadimplencia', 'veiculos_bloqueados', 'audit_logs'],
-  financeiro: ['clientes', 'vendas', 'inadimplencia'],
+  master: ['clientes', 'vendas', 'veiculos_bloqueados', 'audit_logs'],
+  financeiro: ['clientes', 'vendas'],
   documentacao: ['vendas'],
   agente: ['veiculos_bloqueados'],
 };
@@ -15,7 +15,6 @@ export const ROLE_TABLES = {
 export const TABLE_TTL = {
   clientes: 10 * 60 * 1000,         // 10 min — dados mudam pouco
   vendas: 5 * 60 * 1000,            // 5 min
-  inadimplencia: 5 * 60 * 1000,     // 5 min
   veiculos_bloqueados: 2 * 60 * 1000, // 2 min — agentes precisam dados frescos
   audit_logs: 5 * 60 * 1000,        // 5 min — só para dashboard
 };
@@ -24,7 +23,6 @@ export const TABLE_TTL = {
 export const TABLE_SELECT = {
   clientes: 'id,cod_cliente,razao_social,cpf_cnpj,celular,email,cidade,estado',
   vendas: 'id,cod_cliente,razao_social,placa,chassi,marca_modelo,valor_venda_cents,data_venda,bloqueio_financeiro,bloqueio_documentacao,status,vendedor',
-  inadimplencia: 'id,cod_cliente,razao_social,cpf_cnpj,valor_devido_cents,data_vencimento,dias_atraso,status_alerta',
   veiculos_bloqueados: 'id,venda_id,placa,final_placa,marca_modelo,cod_cliente,razao_social,status_financeiro,status_documentacao,status_final,bloqueado_em,chassi',
   audit_logs: 'id,acao,setor,detalhes,user_email,created_at',
 };

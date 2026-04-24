@@ -5,7 +5,7 @@ import { useStats } from '@/hooks/useRealtime';
 import { useRealtime } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency } from '@/lib/utils';
-import { AlertTriangle, Lock, DollarSign, TrendingDown, Activity, Clock, Users, ShoppingCart } from 'lucide-react';
+import { Lock, DollarSign, Activity, Clock, Users, ShoppingCart } from 'lucide-react';
 
 export default function DashboardPage() {
   const { colaborador, hasRole } = useAuth();
@@ -26,9 +26,9 @@ export default function DashboardPage() {
 
   const cards = [
     { title: 'Clientes Cadastrados', value: stats.clientes.toLocaleString('pt-BR'), icon: Users, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
-    { title: 'Total Inadimplente', value: formatCurrency(stats.total_inadimplente_cents), icon: DollarSign, color: 'text-danger', bg: 'bg-danger/10', border: 'border-danger/20' },
-    { title: 'Veículos Bloqueados', value: stats.bloqueados, icon: Lock, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20' },
     { title: 'Vendas Registradas', value: stats.vendas.toLocaleString('pt-BR'), icon: ShoppingCart, color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
+    { title: 'Total em Vendas', value: formatCurrency(stats.total_vendas_cents), icon: DollarSign, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20' },
+    { title: 'Veículos Bloqueados', value: stats.bloqueados, icon: Lock, color: 'text-danger', bg: 'bg-danger/10', border: 'border-danger/20' },
   ];
 
   return (
@@ -55,30 +55,6 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Quick Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div className="glass-card p-4 flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-danger animate-sync-pulse" />
-          <span className="text-sm text-text-muted">Emergência:</span>
-          <span className="text-sm font-bold text-danger">{stats.emergencias}</span>
-        </div>
-        <div className="glass-card p-4 flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-warning animate-sync-pulse" />
-          <span className="text-sm text-text-muted">Atenção:</span>
-          <span className="text-sm font-bold text-warning">{stats.atencao}</span>
-        </div>
-        <div className="glass-card p-4 flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-alert animate-sync-pulse" />
-          <span className="text-sm text-text-muted">Lembrete:</span>
-          <span className="text-sm font-bold text-alert">{stats.lembretes}</span>
-        </div>
-        <div className="glass-card p-4 flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-primary animate-sync-pulse" />
-          <span className="text-sm text-text-muted">Inadimplentes:</span>
-          <span className="text-sm font-bold text-primary">{stats.com_inadimplencia}</span>
-        </div>
-      </div>
-
       {/* Recent Actions */}
       <div className="glass-card p-4 md:p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -92,8 +68,7 @@ export default function DashboardPage() {
                 <div className={`w-2 h-2 rounded-full shrink-0 ${
                   log.acao === 'BLOQUEIO' ? 'bg-danger' : 
                   log.acao === 'DESBLOQUEIO' ? 'bg-success' : 
-                  log.acao === 'LOGIN' ? 'bg-primary' : 
-                  log.acao === 'IMPORTACAO' ? 'bg-warning' : 'bg-text-muted'
+                  log.acao === 'LOGIN' ? 'bg-primary' : 'bg-text-muted'
                 }`} />
                 <div className="min-w-0">
                   <p className="text-sm text-text truncate">{log.acao} — {log.detalhes}</p>

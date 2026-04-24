@@ -4,7 +4,8 @@ import { useRealtime } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { exportToCSV } from '@/lib/export';
-import { Lock, Search, Unlock, Loader2, X, Download, Shield, FileText, ShieldAlert, LockOpen } from 'lucide-react';
+import { exportBloqueadosPDF } from '@/lib/exportBloqueadosPDF';
+import { Lock, Search, Unlock, Loader2, X, Download, Shield, FileText, ShieldAlert, LockOpen, FileDown } from 'lucide-react';
 
 export default function BloqueadosPage() {
   const { setor, user } = useAuth();
@@ -181,17 +182,23 @@ export default function BloqueadosPage() {
           <p className="text-text-muted text-sm mt-1">{filtered.length} veículos</p>
         </div>
         {!isAgente && (
-          <button onClick={() => exportToCSV(filtered, [
-            { key: 'placa', label: 'Placa' },
-            { key: 'marca_modelo', label: 'Modelo' },
-            { key: 'chassi', label: 'Chassi' },
-            { key: 'razao_social', label: 'Razão Social' },
-            { key: 'status_financeiro', label: 'Status Financeiro' },
-            { key: 'status_documentacao', label: 'Status Documentação' },
-            { key: 'status_final', label: 'Status Final' },
-          ], 'veiculos_bloqueados')} className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger text-xs rounded-xl hover:bg-danger/20 transition-all cursor-pointer">
-            <Download className="w-4 h-4" /> Exportar CSV
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => exportBloqueadosPDF(totalBloqueados, totalParciais)}
+              className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary text-xs rounded-xl hover:bg-primary/20 transition-all cursor-pointer">
+              <FileDown className="w-4 h-4" /> Exportar PDF
+            </button>
+            <button onClick={() => exportToCSV(filtered, [
+              { key: 'placa', label: 'Placa' },
+              { key: 'marca_modelo', label: 'Modelo' },
+              { key: 'chassi', label: 'Chassi' },
+              { key: 'razao_social', label: 'Razão Social' },
+              { key: 'status_financeiro', label: 'Status Financeiro' },
+              { key: 'status_documentacao', label: 'Status Documentação' },
+              { key: 'status_final', label: 'Status Final' },
+            ], 'veiculos_bloqueados')} className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger text-xs rounded-xl hover:bg-danger/20 transition-all cursor-pointer">
+              <Download className="w-4 h-4" /> Exportar CSV
+            </button>
+          </div>
         )}
       </div>
 

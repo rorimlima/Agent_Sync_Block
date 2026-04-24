@@ -186,9 +186,8 @@ export function useRealtime(table, options = {}) {
  */
 export function useStats() {
   const [stats, setStats] = useState({
-    clientes: 0, vendas: 0, inadimplencia: 0, bloqueados: 0,
-    total_inadimplente_cents: 0, total_vendas_cents: 0,
-    emergencias: 0, atencao: 0, lembretes: 0, com_inadimplencia: 0,
+    clientes: 0, vendas: 0, bloqueados: 0,
+    total_vendas_cents: 0,
   });
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
@@ -242,7 +241,7 @@ export function useStats() {
       }, 10000);
     };
 
-    const tables = ['clientes', 'vendas', 'inadimplencia', 'veiculos_bloqueados'];
+    const tables = ['clientes', 'vendas', 'veiculos_bloqueados'];
     const channels = tables.map(t =>
       supabase.channel(`stats-${t}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: t }, debouncedRefetch)
