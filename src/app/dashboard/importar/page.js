@@ -57,9 +57,41 @@ export default function ImportarPage() {
     return '';
   };
 
-  const parseValor = (str) => {
+  // Retorna valor RAW (sem converter para string) — usado para valores monetários
+  const findColRaw = (row, aliases) => {
+    const keys = Object.keys(row);
+    for (const alias of aliases) {
+      const found = keys.find(k => k.toLowerCase().trim() === alias.toLowerCase());
+      if (found) return row[found];
+    }
+    return '';
+  };
+
+  const parseValor = (raw) => {
+    if (raw === null || raw === undefined || raw === '') return 0;
+
+    // Se for número nativo do Excel (ex: 64207.92), converter direto para centavos
+    if (typeof raw === 'number') {
+      return isNaN(raw) ? 0 : Math.round(raw * 100);
+    }
+
+    const str = String(raw).trim();
     if (!str) return 0;
-    const cleaned = String(str).replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.');
+
+    // Detectar formato brasileiro (usa . como milhar e , como decimal)
+    // Ex: "64.207,92" → 64207.92 → 6420792 cents
+    // vs formato numérico puro "64207.92"
+    const hasBrFormat = /\d\.\d{3}/.test(str) || /,\d{1,2}$/.test(str);
+
+    let cleaned;
+    if (hasBrFormat) {
+      // Formato BR: remove pontos de milhar, troca vírgula decimal por ponto
+      cleaned = str.replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.');
+    } else {
+      // Formato numérico padrão (ponto decimal): apenas remove símbolos
+      cleaned = str.replace(/[R$\s,]/g, '');
+    }
+
     const num = parseFloat(cleaned);
     return isNaN(num) ? 0 : Math.round(num * 100);
   };
@@ -167,14 +199,14 @@ export default function ImportarPage() {
           clientCods.add(cod);
           const nome = findCol(row, COL_MAP.razao_social);
           if (nome) clientNames[cod] = nome;
-          const valorStr = findCol(row, COL_MAP.valor_devido);
+          const valorRaw = findColRaw(row, COL_MAP.valor_devido);
           const dateKey = Object.keys(row).find(k => COL_MAP.data_vencimento.includes(k.toLowerCase().trim()));
           const dateFmt = parseDate(dateKey ? row[dateKey] : '');
           records.push({
             cod_cliente: cod,
             razao_social: nome || null,
             cpf_cnpj: findCol(row, COL_MAP.cpf_cnpj) || null,
-            valor_devido_cents: parseValor(valorStr),
+            valor_devido_cents: parseValor(valorRaw),
             data_vencimento: dateFmt,
             lancamento: findCol(row, COL_MAP.lancamento) || null,
           });
@@ -226,7 +258,7 @@ export default function ImportarPage() {
           if (!placa && !chassi) { errorList.push(`Linha ${i + 2}: sem placa e sem chassi — ignorada`); return; }
           const dateKey = Object.keys(row).find(k => COL_MAP.data_venda.includes(k.toLowerCase().trim()));
           const dateFmt = parseDate(dateKey ? row[dateKey] : '');
-          const valorStr = findCol(row, COL_MAP.valor_venda);
+          const valorRaw = findColRaw(row, COL_MAP.valor_venda);
           records.push({
             cod_cliente: cod,
             razao_social: nome || null,
@@ -234,7 +266,7 @@ export default function ImportarPage() {
             placa: placa || null,
             chassi: chassi || null,
             marca_modelo: findCol(row, COL_MAP.marca_modelo) || null,
-            valor_venda_cents: parseValor(valorStr),
+            valor_venda_cents: parseValor(valorRaw),
           });
         });
 
