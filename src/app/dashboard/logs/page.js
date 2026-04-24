@@ -3,13 +3,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime } from '@/lib/utils';
-import { ClipboardList, Search, Filter, ChevronLeft, ChevronRight, Loader2, User, Shield, ShoppingCart, Lock, KeyRound, LogIn, LogOut as LogOutIcon, X } from 'lucide-react';
+import { ClipboardList, Search, Filter, ChevronLeft, ChevronRight, Loader2, User, Shield, Upload, ShoppingCart, Lock, KeyRound, LogIn, LogOut as LogOutIcon, X } from 'lucide-react';
 
 const PAGE_SIZE = 30;
 
 const ACAO_CONFIG = {
   LOGIN:        { icon: LogIn,          color: 'text-success',  bg: 'bg-success/10', label: 'Login' },
   LOGOUT:       { icon: LogOutIcon,     color: 'text-text-muted', bg: 'bg-surface-2', label: 'Logout' },
+  IMPORTACAO:   { icon: Upload,         color: 'text-primary',  bg: 'bg-primary/10', label: 'Importação' },
   TROCA_SENHA:  { icon: KeyRound,       color: 'text-warning',  bg: 'bg-warning/10', label: 'Troca de Senha' },
   OCORRENCIA:   { icon: Shield,         color: 'text-success',  bg: 'bg-success/10', label: 'Ocorrência' },
   BLOQUEIO:     { icon: Lock,           color: 'text-danger',   bg: 'bg-danger/10',  label: 'Bloqueio' },
