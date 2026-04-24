@@ -7,10 +7,10 @@ import { useTheme } from '@/hooks/useTheme';
 import { FUNCOES } from '@/lib/constants';
 import { 
   LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog,
-  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown, KeyRound, Eye, EyeOff, CheckCircle2, ClipboardList
+  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown, KeyRound, Eye, EyeOff, CheckCircle2, ClipboardList, ShieldAlert
 } from 'lucide-react';
 
-const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog, Crown, ClipboardList };
+const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog, Crown, ClipboardList, ShieldAlert };
 
 export default function DashboardLayout({ children }) {
   const { user, colaborador, loading, logout, changePassword } = useAuth();
