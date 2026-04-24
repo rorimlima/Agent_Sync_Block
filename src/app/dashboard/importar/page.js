@@ -45,6 +45,7 @@ export default function ImportarPage() {
     chassi: ['chassi', 'veiculo_chassi', 'chassis', 'nr_chassi', 'num_chassi'],
     marca_modelo: ['marca_modelo', 'veiculo', 'veículo', 'modelo', 'descricao', 'descrição', 'marca', 'carro', 'veiculomodeloveiculo_descricao', 'modelo_veiculo'],
     valor_venda: ['valor_venda', 'valor', 'preco', 'preço', 'valor_total', 'total'],
+    lancamento: ['lancamento', 'lançamento', 'lanc', 'nr_lancamento', 'num_lancamento', 'nro_lancamento', 'lan'],
   };
 
   const findCol = (row, aliases) => {
@@ -175,6 +176,7 @@ export default function ImportarPage() {
             cpf_cnpj: findCol(row, COL_MAP.cpf_cnpj) || null,
             valor_devido_cents: parseValor(valorStr),
             data_vencimento: dateFmt,
+            lancamento: findCol(row, COL_MAP.lancamento) || null,
           });
         });
 

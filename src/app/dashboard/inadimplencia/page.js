@@ -5,7 +5,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useStats } from '@/hooks/useRealtime';
 import { formatCurrency, getAlertBadgeClass, getAlertEmoji, getAlertLabel } from '@/lib/utils';
 import { exportToCSV } from '@/lib/export';
-import { AlertTriangle, Search, X, Car, Download, ChevronLeft, ChevronRight, Loader2, Users } from 'lucide-react';
+import { exportToPDF } from '@/lib/exportPDF';
+import { AlertTriangle, Search, X, Car, Download, ChevronLeft, ChevronRight, Loader2, Users, FileText } from 'lucide-react';
 
 const PAGE_SIZE = 50;
 
@@ -143,16 +144,33 @@ export default function InadimplenciaPage() {
           </h1>
           <p className="text-text-muted text-sm mt-1">{totalCount} clientes inadimplentes</p>
         </div>
-        <button onClick={() => exportToCSV(clientList, [
-          { key: 'cod_cliente', label: 'Cód. Cliente' },
-          { key: 'razao_social', label: 'Razão Social' },
-          { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
-          { key: 'total', label: 'Total Devido', format: 'currency' },
-          { key: 'count', label: 'Parcelas' },
-          { key: 'worst', label: 'Status' },
-        ], 'inadimplencia')} className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger text-xs rounded-xl hover:bg-danger/20 transition-all cursor-pointer">
-          <Download className="w-4 h-4" /> Exportar CSV
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => exportToCSV(clientList, [
+            { key: 'cod_cliente', label: 'Cód. Cliente' },
+            { key: 'razao_social', label: 'Razão Social' },
+            { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
+            { key: 'total', label: 'Total Devido', format: 'currency' },
+            { key: 'count', label: 'Parcelas' },
+            { key: 'worst', label: 'Status' },
+          ], 'inadimplencia')} className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger text-xs rounded-xl hover:bg-danger/20 transition-all cursor-pointer">
+            <Download className="w-4 h-4" /> CSV
+          </button>
+          <button onClick={() => exportToPDF(clientList, [
+            { key: 'cod_cliente', label: 'Cód. Cliente' },
+            { key: 'razao_social', label: 'Razão Social' },
+            { key: 'cpf_cnpj', label: 'CPF/CNPJ' },
+            { key: 'total', label: 'Total Devido', format: 'currency' },
+            { key: 'count', label: 'Parcelas', align: 'center' },
+            { key: 'worst', label: 'Status' },
+          ], 'Relatório de Inadimplência', 'inadimplencia', {
+            subtitle: `${totalCount} clientes inadimplentes`,
+            totalLabel: 'Total Devedor Geral',
+            totalValue: formatCurrency(stats.total_inadimplente_cents),
+            filters: filterStatus ? `Status: ${filterStatus}` : 'Todos os status',
+          })} className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary text-xs rounded-xl hover:bg-primary/20 transition-all cursor-pointer">
+            <FileText className="w-4 h-4" /> PDF
+          </button>
+        </div>
       </div>
 
       {/* Resumo Cards */}
@@ -325,6 +343,9 @@ export default function InadimplenciaPage() {
                       {getAlertEmoji(i.status_alerta)} {getAlertLabel(i.status_alerta)}
                     </span>
                   </div>
+                  {i.lancamento && (
+                    <p className="text-xs text-primary font-mono font-semibold mt-1">Lanç. {i.lancamento}</p>
+                  )}
                   <p className="text-xs text-text-muted mt-1">
                     Vencimento: {i.data_vencimento ? new Date(i.data_vencimento + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
                     {i.dias_atraso > 0 && <span className="text-danger ml-2">({i.dias_atraso} dias atraso)</span>}

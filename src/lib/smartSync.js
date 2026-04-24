@@ -91,7 +91,7 @@ export async function smartSyncVendas(records, errorList) {
  * Cada registro existente só pode ser usado 1 vez (_matched flag).
  */
 export async function smartSyncInadimplencia(records, errorList) {
-  const FIELDS = ['razao_social', 'cpf_cnpj', 'valor_devido_cents', 'data_vencimento'];
+  const FIELDS = ['razao_social', 'cpf_cnpj', 'valor_devido_cents', 'data_vencimento', 'lancamento'];
   let inserted = 0, updated = 0;
 
   const codigos = [...new Set(records.map(r => r.cod_cliente))];
@@ -100,7 +100,7 @@ export async function smartSyncInadimplencia(records, errorList) {
   for (let i = 0; i < codigos.length; i += 50) {
     const batch = codigos.slice(i, i + 50);
     const { data } = await supabase.from('inadimplencia')
-      .select('id, cod_cliente, cpf_cnpj, razao_social, valor_devido_cents, data_vencimento')
+      .select('id, cod_cliente, cpf_cnpj, razao_social, valor_devido_cents, data_vencimento, lancamento')
       .in('cod_cliente', batch);
     (data || []).forEach(r => {
       if (!existingByCode[r.cod_cliente]) existingByCode[r.cod_cliente] = [];
