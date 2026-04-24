@@ -80,8 +80,14 @@ export function useRealtime(table, options = {}) {
             const ttl = getTTL(table);
             const fresh = await isCacheFresh(table, ttl);
             if (fresh) {
-              const cached = await getCachedData(table);
+              let cached = await getCachedData(table);
               if (cached.length > 0) {
+                // Aplicar filtro client-side nos dados do cache
+                if (filterRef.current) {
+                  cached = cached.filter(row =>
+                    Object.entries(filterRef.current).every(([k, v]) => row[k] === v)
+                  );
+                }
                 setData(cached);
                 useCached = true;
               }
