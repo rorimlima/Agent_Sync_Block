@@ -87,62 +87,119 @@ export async function smartSyncVendas(records, errorList) {
 
 /**
  * Smart upsert para inadimplência.
- * Match: cod_cliente + valor_devido_cents + data_vencimento.
- * Cada registro existente só pode ser usado 1 vez (_matched flag).
+ * PRIMARY KEY: lancamento (unique index no banco).
+ * - Registros COM lancamento: match direto por lancamento (100% preciso, sem duplicatas).
+ * - Registros SEM lancamento: fallback por cod_cliente + valor + data_vencimento.
  */
 export async function smartSyncInadimplencia(records, errorList) {
-  const FIELDS = ['razao_social', 'cpf_cnpj', 'valor_devido_cents', 'data_vencimento', 'lancamento'];
+  const FIELDS = ['razao_social', 'cpf_cnpj', 'valor_devido_cents', 'data_vencimento', 'lancamento', 'cod_cliente'];
   let inserted = 0, updated = 0;
 
-  const codigos = [...new Set(records.map(r => r.cod_cliente))];
-  const existingByCode = {};
+  // Normalizar: empty string lancamento → null
+  records.forEach(r => { if (r.lancamento === '') r.lancamento = null; });
 
-  for (let i = 0; i < codigos.length; i += 50) {
-    const batch = codigos.slice(i, i + 50);
-    const { data } = await supabase.from('inadimplencia')
-      .select('id, cod_cliente, cpf_cnpj, razao_social, valor_devido_cents, data_vencimento, lancamento')
-      .in('cod_cliente', batch);
-    (data || []).forEach(r => {
-      if (!existingByCode[r.cod_cliente]) existingByCode[r.cod_cliente] = [];
-      existingByCode[r.cod_cliente].push({ ...r, _matched: false });
-    });
-  }
+  // Separar registros COM e SEM lancamento
+  const withLanc = records.filter(r => r.lancamento);
+  const withoutLanc = records.filter(r => !r.lancamento);
 
-  const toInsert = [];
-  const toUpdate = [];
+  // ===== 1) Registros COM lancamento — upsert direto via chave única =====
+  if (withLanc.length > 0) {
+    // Buscar existentes por lancamento
+    const lancValues = withLanc.map(r => r.lancamento);
+    const existingByLanc = {};
 
-  for (const rec of records) {
-    const candidates = existingByCode[rec.cod_cliente] || [];
-    let match = null;
-
-    for (const ex of candidates) {
-      if (ex._matched) continue;
-      const valorMatch = rec.valor_devido_cents === ex.valor_devido_cents;
-      const dateMatch = (rec.data_vencimento || '') === (ex.data_vencimento || '');
-      if (valorMatch && dateMatch) { match = ex; break; }
+    for (let i = 0; i < lancValues.length; i += 200) {
+      const batch = lancValues.slice(i, i + 200);
+      const { data } = await supabase.from('inadimplencia')
+        .select('id, cod_cliente, cpf_cnpj, razao_social, valor_devido_cents, data_vencimento, lancamento')
+        .in('lancamento', batch);
+      (data || []).forEach(r => { existingByLanc[r.lancamento] = r; });
     }
 
-    if (match) {
-      match._matched = true;
-      const { merged, changed } = mergeRecord(match, rec, FIELDS);
-      if (changed) toUpdate.push({ id: match.id, ...merged });
-    } else {
-      toInsert.push(rec);
+    const toInsertLanc = [];
+    const toUpdateLanc = [];
+
+    for (const rec of withLanc) {
+      const existing = existingByLanc[rec.lancamento];
+      if (existing) {
+        // Já existe — merge apenas campos vazios
+        const { merged, changed } = mergeRecord(existing, rec, FIELDS);
+        if (changed) toUpdateLanc.push({ id: existing.id, ...merged });
+      } else {
+        toInsertLanc.push(rec);
+      }
+    }
+
+    // Insert novos
+    for (let i = 0; i < toInsertLanc.length; i += 50) {
+      const batch = toInsertLanc.slice(i, i + 50);
+      const { data, error } = await supabase.from('inadimplencia').insert(batch).select();
+      if (error) errorList.push(`Insert lancamento batch ${Math.floor(i/50)+1}: ${error.message}`);
+      else inserted += (data?.length || batch.length);
+    }
+
+    // Update existentes
+    for (const upd of toUpdateLanc) {
+      const { id, ...fields } = upd;
+      const { error } = await supabase.from('inadimplencia').update(fields).eq('id', id);
+      if (error) errorList.push(`Update ${id}: ${error.message}`);
+      else updated++;
     }
   }
 
-  for (let i = 0; i < toInsert.length; i += 50) {
-    const batch = toInsert.slice(i, i + 50);
-    const { data, error } = await supabase.from('inadimplencia').insert(batch).select();
-    if (error) errorList.push(`Insert batch ${Math.floor(i/50)+1}: ${error.message}`);
-    else inserted += (data?.length || batch.length);
-  }
+  // ===== 2) Registros SEM lancamento — fallback por cod_cliente + valor + data =====
+  if (withoutLanc.length > 0) {
+    const codigos = [...new Set(withoutLanc.map(r => r.cod_cliente))];
+    const existingByCode = {};
 
-  for (const upd of toUpdate) {
-    const { id, ...fields } = upd;
-    const { error } = await supabase.from('inadimplencia').update(fields).eq('id', id);
-    if (error) errorList.push(`Update ${id}: ${error.message}`);
-    else updated++;
+    for (let i = 0; i < codigos.length; i += 50) {
+      const batch = codigos.slice(i, i + 50);
+      const { data } = await supabase.from('inadimplencia')
+        .select('id, cod_cliente, cpf_cnpj, razao_social, valor_devido_cents, data_vencimento, lancamento')
+        .in('cod_cliente', batch)
+        .is('lancamento', null);
+      (data || []).forEach(r => {
+        if (!existingByCode[r.cod_cliente]) existingByCode[r.cod_cliente] = [];
+        existingByCode[r.cod_cliente].push({ ...r, _matched: false });
+      });
+    }
+
+    const toInsertNoLanc = [];
+    const toUpdateNoLanc = [];
+
+    for (const rec of withoutLanc) {
+      const candidates = existingByCode[rec.cod_cliente] || [];
+      let match = null;
+
+      for (const ex of candidates) {
+        if (ex._matched) continue;
+        const valorMatch = rec.valor_devido_cents === ex.valor_devido_cents;
+        const dateMatch = (rec.data_vencimento || '') === (ex.data_vencimento || '');
+        if (valorMatch && dateMatch) { match = ex; break; }
+      }
+
+      if (match) {
+        match._matched = true;
+        const { merged, changed } = mergeRecord(match, rec, FIELDS);
+        if (changed) toUpdateNoLanc.push({ id: match.id, ...merged });
+      } else {
+        toInsertNoLanc.push(rec);
+      }
+    }
+
+    for (let i = 0; i < toInsertNoLanc.length; i += 50) {
+      const batch = toInsertNoLanc.slice(i, i + 50);
+      const { data, error } = await supabase.from('inadimplencia').insert(batch).select();
+      if (error) errorList.push(`Insert batch ${Math.floor(i/50)+1}: ${error.message}`);
+      else inserted += (data?.length || batch.length);
+    }
+
+    for (const upd of toUpdateNoLanc) {
+      const { id, ...fields } = upd;
+      const { error } = await supabase.from('inadimplencia').update(fields).eq('id', id);
+      if (error) errorList.push(`Update ${id}: ${error.message}`);
+      else updated++;
+    }
   }
 
   return { inserted, updated };
