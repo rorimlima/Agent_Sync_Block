@@ -9,12 +9,33 @@ export function AuthProvider({ children }) {
   const [colaborador, setColaborador] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch colaborador profile from DB
+  // Fetch colaborador profile from DB (with sessionStorage cache)
   const fetchColaborador = useCallback(async (authUser) => {
     if (!authUser) {
       setColaborador(null);
       return null;
     }
+
+    // Tentar cache rápido do sessionStorage primeiro
+    try {
+      const cached = sessionStorage.getItem('asb-colab');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.auth_user_id === authUser.id) {
+          setColaborador(parsed);
+          // Revalidar em background (non-blocking)
+          supabase.from('colaboradores').select('*').eq('auth_user_id', authUser.id).single()
+            .then(({ data }) => {
+              if (data) {
+                setColaborador(data);
+                try { sessionStorage.setItem('asb-colab', JSON.stringify(data)); } catch {}
+              }
+            });
+          return parsed;
+        }
+      }
+    } catch {}
+
     const { data, error } = await supabase
       .from('colaboradores')
       .select('*')
@@ -26,10 +47,12 @@ export function AuthProvider({ children }) {
       return null;
     }
     setColaborador(data);
+    try { sessionStorage.setItem('asb-colab', JSON.stringify(data)); } catch {}
     return data;
   }, []);
 
   useEffect(() => {
+    // Inicialização rápida: checar sessão existente
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
@@ -45,6 +68,7 @@ export function AuthProvider({ children }) {
       } else {
         setUser(null);
         setColaborador(null);
+        try { sessionStorage.removeItem('asb-colab'); } catch {}
       }
     });
 
@@ -77,14 +101,14 @@ export function AuthProvider({ children }) {
       throw new Error('Sua conta está bloqueada. Contate o administrador.');
     }
 
-    // Audit log
-    await supabase.from('audit_logs').insert({
+    // Audit log (non-blocking)
+    supabase.from('audit_logs').insert({
       acao: 'LOGIN',
       setor: colab.funcao,
       detalhes: `Login de ${colab.nome} (${colab.funcao})`,
       user_id: data.user.id,
       user_email: data.user.email,
-    });
+    }).then(() => {});
 
     return { user: data.user, colaborador: colab };
   };
@@ -93,30 +117,32 @@ export function AuthProvider({ children }) {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
 
-    // Audit log
+    // Audit log (non-blocking)
     if (user && colaborador) {
-      await supabase.from('audit_logs').insert({
+      supabase.from('audit_logs').insert({
         acao: 'TROCA_SENHA',
         setor: colaborador.funcao,
         detalhes: `${colaborador.nome} alterou a própria senha`,
         user_id: user.id,
         user_email: user.email,
-      });
+      }).then(() => {});
     }
   };
 
   const logout = async () => {
     if (user && colaborador) {
-      await supabase.from('audit_logs').insert({
+      // Non-blocking audit
+      supabase.from('audit_logs').insert({
         acao: 'LOGOUT',
         setor: colaborador.funcao,
         detalhes: `Logout de ${colaborador.nome} (${colaborador.funcao})`,
         user_id: user.id,
         user_email: user.email,
-      });
+      }).then(() => {});
     }
     setUser(null);
     setColaborador(null);
+    try { sessionStorage.removeItem('asb-colab'); } catch {}
     await supabase.auth.signOut();
   };
 

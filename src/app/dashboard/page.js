@@ -11,7 +11,7 @@ export default function DashboardPage() {
   const { colaborador, hasRole } = useAuth();
   const router = useRouter();
   const { stats, loading: statsLoading } = useStats();
-  const { data: auditLogs } = useRealtime('audit_logs', { orderBy: 'created_at', orderAsc: false, fetchAll: false });
+  const { data: auditLogs } = useRealtime('audit_logs', { orderBy: 'created_at', orderAsc: false, limit: 20 });
 
   const funcao = colaborador?.funcao;
 

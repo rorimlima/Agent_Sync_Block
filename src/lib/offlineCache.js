@@ -1,14 +1,21 @@
 /**
  * Offline Cache — IndexedDB para dados do Supabase
  * Armazena tabelas localmente para acesso offline
+ * Singleton pattern: mantém conexão aberta na memória
  */
 
 const DB_NAME = 'agent_sync_offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORES = ['clientes', 'vendas', 'inadimplencia', 'veiculos_bloqueados', 'audit_logs'];
 
+let _db = null;
+let _dbPromise = null;
+
 function openDB() {
-  return new Promise((resolve, reject) => {
+  if (_db) return Promise.resolve(_db);
+  if (_dbPromise) return _dbPromise;
+
+  _dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
@@ -17,14 +24,27 @@ function openDB() {
           db.createObjectStore(store, { keyPath: 'id' });
         }
       });
-      // Fila de ações pendentes (bloqueios offline)
       if (!db.objectStoreNames.contains('pending_actions')) {
         db.createObjectStore('pending_actions', { keyPath: 'id', autoIncrement: true });
       }
+      // Store para meta/timestamps
+      if (!db.objectStoreNames.contains('_meta')) {
+        db.createObjectStore('_meta', { keyPath: 'key' });
+      }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      _db = req.result;
+      _db.onclose = () => { _db = null; _dbPromise = null; };
+      _dbPromise = null;
+      resolve(_db);
+    };
+    req.onerror = () => {
+      _dbPromise = null;
+      reject(req.error);
+    };
   });
+
+  return _dbPromise;
 }
 
 export async function cacheTableData(tableName, data) {
@@ -40,14 +60,18 @@ export async function cacheTableData(tableName, data) {
 }
 
 export async function getCachedData(tableName) {
-  const db = await openDB();
-  const tx = db.transaction(tableName, 'readonly');
-  const store = tx.objectStore(tableName);
-  return new Promise((resolve, reject) => {
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
+  try {
+    const db = await openDB();
+    const tx = db.transaction(tableName, 'readonly');
+    const store = tx.objectStore(tableName);
+    return new Promise((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return [];
+  }
 }
 
 export async function addPendingAction(action) {
@@ -84,4 +108,12 @@ export async function setCacheTimestamp(tableName) {
   try {
     localStorage.setItem(`cache_ts_${tableName}`, Date.now().toString());
   } catch {}
+}
+
+/**
+ * Check if cache is fresh (within TTL in ms)
+ */
+export async function isCacheFresh(tableName, ttlMs = 300000) {
+  const ts = await getCacheTimestamp(tableName);
+  return ts > 0 && (Date.now() - ts) < ttlMs;
 }

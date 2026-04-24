@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getTTL, getSelect, getFilter } from '@/lib/syncByRole';
 
 /**
  * Hook para detectar status online/offline e registrar SW
@@ -30,7 +31,7 @@ export function useOnline() {
 }
 
 /**
- * Hook genérico para Supabase Realtime com cache offline
+ * Hook genérico para Supabase Realtime com cache offline e TTL
  */
 export function useRealtime(table, options = {}) {
   const [data, setData] = useState([]);
@@ -39,14 +40,17 @@ export function useRealtime(table, options = {}) {
   const [connected, setConnected] = useState(false);
 
   const { 
-    select = '*', 
+    select, 
     orderBy = 'created_at', 
     orderAsc = false, 
     filter,
-    pageSize = 1000,
+    pageSize = 500,
     fetchAll = true,
+    limit,            // Limitar resultado total (ex: últimos 20 audit_logs)
+    skipRealtime = false,
   } = options;
 
+  const resolvedSelect = select || getSelect(table);
   const filterRef = useRef(filter);
   filterRef.current = filter;
 
@@ -56,39 +60,70 @@ export function useRealtime(table, options = {}) {
 
       // Tentar buscar online
       if (navigator.onLine) {
-        let allRows = [];
-        let page = 0;
-        let hasMore = true;
-
-        while (hasMore) {
-          let query = supabase.from(table).select(select);
+        // Se há limit, buscar só o necessário sem loop
+        if (limit) {
+          let query = supabase.from(table).select(resolvedSelect);
           if (filterRef.current) {
             Object.entries(filterRef.current).forEach(([key, value]) => {
               query = query.eq(key, value);
             });
           }
-          query = query.order(orderBy, { ascending: orderAsc });
-          if (fetchAll) {
-            const from = page * pageSize;
-            const to = from + pageSize - 1;
-            query = query.range(from, to);
-          }
+          query = query.order(orderBy, { ascending: orderAsc }).limit(limit);
           const { data: result, error: err } = await query;
           if (err) throw err;
-          const rows = result || [];
-          allRows = allRows.concat(rows);
-          if (!fetchAll || rows.length < pageSize) hasMore = false;
-          else page++;
+          setData(result || []);
+        } else {
+          // Verificar TTL do cache antes de baixar tudo
+          let useCached = false;
+          try {
+            const { isCacheFresh, getCachedData } = await import('@/lib/offlineCache');
+            const ttl = getTTL(table);
+            const fresh = await isCacheFresh(table, ttl);
+            if (fresh) {
+              const cached = await getCachedData(table);
+              if (cached.length > 0) {
+                setData(cached);
+                useCached = true;
+              }
+            }
+          } catch {}
+
+          if (!useCached) {
+            let allRows = [];
+            let page = 0;
+            let hasMore = true;
+
+            while (hasMore) {
+              let query = supabase.from(table).select(resolvedSelect);
+              if (filterRef.current) {
+                Object.entries(filterRef.current).forEach(([key, value]) => {
+                  query = query.eq(key, value);
+                });
+              }
+              query = query.order(orderBy, { ascending: orderAsc });
+              if (fetchAll) {
+                const from = page * pageSize;
+                const to = from + pageSize - 1;
+                query = query.range(from, to);
+              }
+              const { data: result, error: err } = await query;
+              if (err) throw err;
+              const rows = result || [];
+              allRows = allRows.concat(rows);
+              if (!fetchAll || rows.length < pageSize) hasMore = false;
+              else page++;
+            }
+
+            setData(allRows);
+
+            // Cache para uso offline
+            try {
+              const { cacheTableData, setCacheTimestamp } = await import('@/lib/offlineCache');
+              await cacheTableData(table, allRows);
+              await setCacheTimestamp(table);
+            } catch {}
+          }
         }
-
-        setData(allRows);
-
-        // Cache para uso offline
-        try {
-          const { cacheTableData, setCacheTimestamp } = await import('@/lib/offlineCache');
-          await cacheTableData(table, allRows);
-          await setCacheTimestamp(table);
-        } catch {}
       } else {
         // Offline — usar cache
         try {
@@ -108,22 +143,24 @@ export function useRealtime(table, options = {}) {
     } finally {
       setLoading(false);
     }
-  }, [table, select, orderBy, orderAsc, pageSize, fetchAll]);
+  }, [table, resolvedSelect, orderBy, orderAsc, pageSize, fetchAll, limit]);
 
   useEffect(() => {
     fetchData();
+
+    // Não abrir canal realtime se skipRealtime ou offline
+    if (skipRealtime || !navigator.onLine) return;
+
     const channel = supabase
-      .channel(`realtime-${table}`)
+      .channel(`rt-${table}`)
       .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
         setData(prev => {
           const { eventType, new: newRecord, old: oldRecord } = payload;
           const f = filterRef.current;
-          // Verificar se o registro atende ao filtro
           const matchesFilter = !f || Object.entries(f).every(([k, v]) => newRecord?.[k] === v);
           if (eventType === 'INSERT') return matchesFilter ? [newRecord, ...prev] : prev;
           if (eventType === 'UPDATE') {
             if (matchesFilter) return prev.map(item => item.id === newRecord.id ? newRecord : item);
-            // Se não atende mais ao filtro, remover da lista
             return prev.filter(item => item.id !== newRecord.id);
           }
           if (eventType === 'DELETE') return prev.filter(item => item.id !== oldRecord.id);
@@ -133,13 +170,13 @@ export function useRealtime(table, options = {}) {
       .subscribe((status) => setConnected(status === 'SUBSCRIBED'));
 
     return () => supabase.removeChannel(channel);
-  }, [table, fetchData]);
+  }, [table, fetchData, skipRealtime]);
 
   return { data, loading, error, connected, refetch: fetchData };
 }
 
 /**
- * Hook leve para KPIs de Dashboard
+ * Hook leve para KPIs de Dashboard — usa RPC agregada (1 query!)
  */
 export function useStats() {
   const [stats, setStats] = useState({
@@ -148,64 +185,69 @@ export function useStats() {
     emergencias: 0, atencao: 0, lembretes: 0, com_inadimplencia: 0,
   });
   const [loading, setLoading] = useState(true);
+  const mountedRef = useRef(true);
 
   const fetchStats = useCallback(async () => {
     try {
+      if (!navigator.onLine) {
+        // Tentar ler stats do cache
+        try {
+          const cached = sessionStorage.getItem('asb-stats');
+          if (cached) setStats(JSON.parse(cached));
+        } catch {}
+        return;
+      }
+
       setLoading(true);
-      const [cliRes, vendRes, inadRes, bloqRes] = await Promise.all([
-        supabase.from('clientes').select('id', { count: 'exact', head: true }),
-        supabase.from('vendas').select('id', { count: 'exact', head: true }),
-        supabase.from('inadimplencia').select('id', { count: 'exact', head: true }),
-        supabase.from('veiculos_bloqueados').select('id', { count: 'exact', head: true }).eq('status_final', 'VEÍCULO BLOQUEADO'),
-      ]);
 
-      let allInad = [], pg = 0, more = true;
-      while (more) {
-        const { data: batch } = await supabase.from('inadimplencia')
-          .select('valor_devido_cents, status_alerta, cod_cliente')
-          .range(pg * 1000, (pg + 1) * 1000 - 1);
-        const rows = batch || [];
-        allInad = allInad.concat(rows);
-        more = rows.length === 1000; pg++;
+      // Uma única query RPC em vez de loops
+      const { data, error } = await supabase.rpc('get_dashboard_stats');
+      if (error) throw error;
+
+      if (data && mountedRef.current) {
+        const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+        setStats(parsed);
+        // Cache para uso offline
+        try { sessionStorage.setItem('asb-stats', JSON.stringify(parsed)); } catch {}
       }
-
-      const totalInad = allInad.reduce((a, r) => a + (r.valor_devido_cents || 0), 0);
-      const emergencias = allInad.filter(r => r.status_alerta === 'EMERGENCIA').length;
-      const atencao = allInad.filter(r => r.status_alerta === 'ATENCAO').length;
-      const lembretes = allInad.filter(r => r.status_alerta === 'LEMBRETE').length;
-      const inadCods = new Set(allInad.map(r => r.cod_cliente));
-
-      let allVendas = []; pg = 0; more = true;
-      while (more) {
-        const { data: batch } = await supabase.from('vendas')
-          .select('valor_venda_cents').range(pg * 1000, (pg + 1) * 1000 - 1);
-        const rows = batch || [];
-        allVendas = allVendas.concat(rows);
-        more = rows.length === 1000; pg++;
-      }
-      const totalVendas = allVendas.reduce((a, r) => a + (r.valor_venda_cents || 0), 0);
-
-      setStats({
-        clientes: cliRes.count ?? 0, vendas: vendRes.count ?? 0,
-        inadimplencia: inadRes.count ?? 0, bloqueados: bloqRes.count ?? 0,
-        total_inadimplente_cents: totalInad, total_vendas_cents: totalVendas,
-        emergencias, atencao, lembretes, com_inadimplencia: inadCods.size,
-      });
     } catch (err) {
-      console.error('Stats error:', err);
+      console.error('Stats RPC error:', err);
+      // Fallback: tentar cache
+      try {
+        const cached = sessionStorage.getItem('asb-stats');
+        if (cached) setStats(JSON.parse(cached));
+      } catch {}
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     fetchStats();
-    const channels = ['clientes', 'vendas', 'inadimplencia', 'veiculos_bloqueados'].map(t =>
+
+    // Escutar realtime apenas nas tabelas que afetam stats
+    // Debounce: refetch no máximo a cada 10s quando há mudanças
+    let debounceTimer = null;
+    const debouncedRefetch = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (mountedRef.current) fetchStats();
+      }, 10000);
+    };
+
+    const tables = ['clientes', 'vendas', 'inadimplencia', 'veiculos_bloqueados'];
+    const channels = tables.map(t =>
       supabase.channel(`stats-${t}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: t }, () => fetchStats())
+        .on('postgres_changes', { event: '*', schema: 'public', table: t }, debouncedRefetch)
         .subscribe()
     );
-    return () => channels.forEach(ch => supabase.removeChannel(ch));
+
+    return () => {
+      mountedRef.current = false;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      channels.forEach(ch => supabase.removeChannel(ch));
+    };
   }, [fetchStats]);
 
   return { stats, loading, refetch: fetchStats };
