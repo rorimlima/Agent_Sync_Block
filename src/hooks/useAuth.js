@@ -32,6 +32,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [colaborador, setColaborador] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isHydrated, setIsHydrated] = useState(false); // Flag: dados completos prontos
   const lastAuthCheckRef = useRef(0);
 
   // Safety timer escalonado — avisa em 20s, força reset em 45s
@@ -99,54 +100,66 @@ export function AuthProvider({ children }) {
     // Tentar cache rápido do sessionStorage primeiro (com validação)
     const cached = loadFromCache('asb-colab');
     if (cached && cached.auth_user_id === authUser.id) {
-      setColaborador(cached);
-      // Revalidar em background (non-blocking) com retry
-      const maxRetries = 3;
-      (async () => {
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          try {
-            const { data } = await supabase.from('colaboradores').select('*').eq('auth_user_id', authUser.id).single();
-            if (data && data.funcao) { // validação simples
-              setColaborador(data);
-              saveToCache('asb-colab', data);
+      // Validação de integridade no cache
+      const requiredFields = ['id', 'funcao', 'nome', 'auth_user_id'];
+      const missing = requiredFields.filter(f => !cached[f]);
+      if (missing.length === 0) {
+        setColaborador(cached);
+        setIsHydrated(true);
+        // Revalidar em background (non-blocking) com retry
+        const maxRetries = 3;
+        (async () => {
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              const { data } = await supabase.from('colaboradores').select('*').eq('auth_user_id', authUser.id).single();
+              if (data && data.funcao && data.nome) {
+                setColaborador(data);
+                saveToCache('asb-colab', data);
+              }
+              break;
+            } catch (err) {
+              if (attempt === maxRetries) break;
+              await new Promise(r => setTimeout(r, Math.min(1000 * 2 ** attempt, 10000)));
             }
-            break;
-          } catch (err) {
-            if (attempt === maxRetries) break;
-            await new Promise(r => setTimeout(r, Math.min(1000 * 2 ** attempt, 10000)));
           }
-        }
-      })();
-      return cached;
+        })();
+        return cached;
+      }
     }
 
     let data = null;
     let error = null;
     const maxRetries = 3;
-    
-    // Fetch with retry
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const res = await supabase
         .from('colaboradores')
         .select('*')
         .eq('auth_user_id', authUser.id)
         .single();
-        
+
       data = res.data;
       error = res.error;
-      
+
       if (!error) break;
       if (attempt === maxRetries) break;
-      await new Promise(r => setTimeout(r, Math.min(1000 * 2 ** attempt, 10000)));
+      const delay = Math.min(1000 * 2 ** attempt, 10000);
+      console.warn(`[Agent Sync] Auth fetch tentativa ${attempt} falhou, retentando em ${delay}ms`);
+      await new Promise(r => setTimeout(r, delay));
     }
 
-    if (error || !data || !data.funcao) {
-      console.error('[Agent Sync] Erro ou dados incompletos ao buscar colaborador:', error || 'Dados faltantes');
+    // Validação de integridade — não renderiza com dados parciais
+    const requiredFields = ['id', 'funcao', 'nome', 'auth_user_id'];
+    const missing = requiredFields.filter(f => !data || !data[f]);
+
+    if (error || missing.length > 0) {
+      console.error('[Agent Sync] Colaborador inválido ou incompleto. Campos faltando:', missing, 'Erro:', error?.message);
       setColaborador(null);
       return null;
     }
-    
+
     setColaborador(data);
+    setIsHydrated(true);
     saveToCache('asb-colab', data);
     return data;
   }, []);
@@ -254,7 +267,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, colaborador, setor: colaborador?.funcao, loading, login, logout, hasRole, changePassword }}>
+    <AuthContext.Provider value={{ user, colaborador, setor: colaborador?.funcao, loading, isHydrated, login, logout, hasRole, changePassword }}>
       {children}
     </AuthContext.Provider>
   );
