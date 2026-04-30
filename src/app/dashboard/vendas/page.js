@@ -104,66 +104,73 @@ export default function VendasPage() {
         return;
       }
 
-      // 2) Sincronizar veiculos_bloqueados — upsert atômico para evitar "duplicate key"
+      // 2) Sincronizar veiculos_bloqueados
       if (venda.placa) {
+        // Calcular status com base no estado da venda
+        const finBlocked = tipo === 'financeiro' ? newValue : venda.bloqueio_financeiro;
+        const docBlocked = tipo === 'documentacao' ? newValue : venda.bloqueio_documentacao;
+        const statusFinanceiro = finBlocked ? 'BLOQUEADO' : 'LIBERADO';
+        const statusDocumentacao = docBlocked ? 'BLOQUEADO' : 'LIBERADO';
+        const bothBlocked = finBlocked && docBlocked;
+        const anyBlocked = finBlocked || docBlocked;
+        const statusFinal = bothBlocked ? 'VEÍCULO BLOQUEADO' : anyBlocked ? 'PARCIAL' : 'LIBERADO';
+
+        const updateData = {
+          status_financeiro: statusFinanceiro,
+          status_documentacao: statusDocumentacao,
+          status_final: statusFinal,
+        };
+
         if (newValue) {
-          // BLOQUEANDO: usar o estado ATUAL da venda (já atualizada acima) para calcular status
-          const finBlocked = tipo === 'financeiro' ? true : venda.bloqueio_financeiro;
-          const docBlocked = tipo === 'documentacao' ? true : venda.bloqueio_documentacao;
-          const statusFinanceiro = finBlocked ? 'BLOQUEADO' : 'LIBERADO';
-          const statusDocumentacao = docBlocked ? 'BLOQUEADO' : 'LIBERADO';
-          const bothBlocked = finBlocked && docBlocked;
-          const statusFinal = bothBlocked ? 'VEÍCULO BLOQUEADO' : 'PARCIAL';
+          // Bloqueando — limpar campos de desbloqueio
+          updateData.bloqueado_em = new Date().toISOString();
+          updateData.motivo_desbloqueio = null;
+          updateData.desbloqueado_por = null;
+          updateData.desbloqueado_em = null;
+        } else if (!anyBlocked) {
+          // Desbloqueio total
+          updateData.motivo_desbloqueio = `Desbloqueio ${tipo} via vendas`;
+          updateData.desbloqueado_por = user.id;
+          updateData.desbloqueado_em = new Date().toISOString();
+        }
 
-          // Upsert atômico — INSERT ou UPDATE se placa já existe
-          const { error: upsertErr } = await supabase.from('veiculos_bloqueados')
-            .upsert({
-              placa: venda.placa,
-              final_placa: venda.placa?.slice(-1) || null,
-              cod_cliente: venda.cod_cliente,
-              chassi: venda.chassi || null,
-              marca_modelo: venda.marca_modelo || null,
-              razao_social: venda.razao_social || null,
-              venda_id: venda.id,
-              status_financeiro: statusFinanceiro,
-              status_documentacao: statusDocumentacao,
-              status_final: statusFinal,
-              bloqueado_em: new Date().toISOString(),
-              // Limpar campos de desbloqueio ao re-bloquear
-              motivo_desbloqueio: null,
-              desbloqueado_por: null,
-              desbloqueado_em: null,
-            }, { onConflict: 'placa', ignoreDuplicates: false });
+        // Tentar UPDATE primeiro (cenário mais comum — registro já existe)
+        const { data: updated, error: updErr } = await supabase
+          .from('veiculos_bloqueados')
+          .update(updateData)
+          .eq('placa', venda.placa)
+          .select('id');
 
-          if (upsertErr) {
-            console.error('Erro ao sincronizar bloqueio:', upsertErr);
-            alert(`Erro ao salvar veículo bloqueado: ${upsertErr.message}`);
+        if (updErr) {
+          console.error('Erro ao atualizar bloqueio:', updErr);
+        }
+
+        // Se UPDATE não afetou nenhum registro, INSERT novo
+        if (!updated || updated.length === 0) {
+          const { error: insErr } = await supabase.from('veiculos_bloqueados').insert({
+            placa: venda.placa,
+            final_placa: venda.placa?.slice(-1) || null,
+            cod_cliente: venda.cod_cliente,
+            chassi: venda.chassi || null,
+            marca_modelo: venda.marca_modelo || null,
+            razao_social: venda.razao_social || null,
+            venda_id: venda.id,
+            ...updateData,
+            bloqueado_em: new Date().toISOString(),
+          });
+
+          // Se INSERT falhou por duplicate key (race condition), retry como UPDATE
+          if (insErr) {
+            if (insErr.code === '23505') {
+              console.warn('Race condition detectada, retrying como UPDATE...');
+              await supabase.from('veiculos_bloqueados')
+                .update(updateData)
+                .eq('placa', venda.placa);
+            } else {
+              console.error('Erro ao criar bloqueio:', insErr);
+              alert(`Erro ao registrar veículo bloqueado: ${insErr.message}`);
+            }
           }
-        } else {
-          // DESBLOQUEANDO: calcular novo status com base no estado da venda
-          const finBlocked = tipo === 'financeiro' ? false : venda.bloqueio_financeiro;
-          const docBlocked = tipo === 'documentacao' ? false : venda.bloqueio_documentacao;
-          const statusFinanceiro = finBlocked ? 'BLOQUEADO' : 'LIBERADO';
-          const statusDocumentacao = docBlocked ? 'BLOQUEADO' : 'LIBERADO';
-          const anyBlocked = finBlocked || docBlocked;
-
-          const updatePayload = {
-            status_financeiro: statusFinanceiro,
-            status_documentacao: statusDocumentacao,
-            status_final: anyBlocked ? 'PARCIAL' : 'LIBERADO',
-          };
-
-          if (!anyBlocked) {
-            updatePayload.motivo_desbloqueio = `Desbloqueio ${tipo} via vendas`;
-            updatePayload.desbloqueado_por = user.id;
-            updatePayload.desbloqueado_em = new Date().toISOString();
-          }
-
-          const { error: updErr } = await supabase.from('veiculos_bloqueados')
-            .update(updatePayload)
-            .eq('placa', venda.placa);
-
-          if (updErr) console.error('Erro ao atualizar status bloqueio:', updErr);
         }
       }
 
