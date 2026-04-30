@@ -104,46 +104,20 @@ export default function VendasPage() {
         return;
       }
 
-      // 2) Sincronizar veiculos_bloqueados — criar/atualizar registro para QUALQUER bloqueio ativo
+      // 2) Sincronizar veiculos_bloqueados — upsert atômico para evitar "duplicate key"
       if (venda.placa) {
-        // Verificar se já existe registro para esta placa
-        const { data: existingRecord } = await supabase
-          .from('veiculos_bloqueados')
-          .select('id, status_financeiro, status_documentacao')
-          .eq('placa', venda.placa)
-          .maybeSingle();
-
         if (newValue) {
-          // BLOQUEANDO: calcular status com base no registro existente ou no estado da venda
-          const currentFinStatus = existingRecord?.status_financeiro || (venda.bloqueio_financeiro ? 'BLOQUEADO' : 'LIBERADO');
-          const currentDocStatus = existingRecord?.status_documentacao || (venda.bloqueio_documentacao ? 'BLOQUEADO' : 'LIBERADO');
-
-          const statusFinanceiro = tipo === 'financeiro' ? 'BLOQUEADO' : currentFinStatus;
-          const statusDocumentacao = tipo === 'documentacao' ? 'BLOQUEADO' : currentDocStatus;
-          const bothBlocked = statusFinanceiro === 'BLOQUEADO' && statusDocumentacao === 'BLOQUEADO';
+          // BLOQUEANDO: usar o estado ATUAL da venda (já atualizada acima) para calcular status
+          const finBlocked = tipo === 'financeiro' ? true : venda.bloqueio_financeiro;
+          const docBlocked = tipo === 'documentacao' ? true : venda.bloqueio_documentacao;
+          const statusFinanceiro = finBlocked ? 'BLOQUEADO' : 'LIBERADO';
+          const statusDocumentacao = docBlocked ? 'BLOQUEADO' : 'LIBERADO';
+          const bothBlocked = finBlocked && docBlocked;
           const statusFinal = bothBlocked ? 'VEÍCULO BLOQUEADO' : 'PARCIAL';
 
-          if (existingRecord) {
-            // Registro já existe → UPDATE apenas os campos necessários
-            const { error: updErr } = await supabase.from('veiculos_bloqueados')
-              .update({
-                status_financeiro: statusFinanceiro,
-                status_documentacao: statusDocumentacao,
-                status_final: statusFinal,
-                bloqueado_em: new Date().toISOString(),
-                // Limpar campos de desbloqueio ao re-bloquear
-                motivo_desbloqueio: null,
-                desbloqueado_por: null,
-                desbloqueado_em: null,
-              })
-              .eq('id', existingRecord.id);
-            if (updErr) {
-              console.error('Erro ao atualizar bloqueio:', updErr);
-              alert(`Erro ao atualizar veículo bloqueado: ${updErr.message}`);
-            }
-          } else {
-            // Nenhum registro existe → INSERT novo
-            const { error: insErr } = await supabase.from('veiculos_bloqueados').insert({
+          // Upsert atômico — INSERT ou UPDATE se placa já existe
+          const { error: upsertErr } = await supabase.from('veiculos_bloqueados')
+            .upsert({
               placa: venda.placa,
               final_placa: venda.placa?.slice(-1) || null,
               cod_cliente: venda.cod_cliente,
@@ -155,39 +129,41 @@ export default function VendasPage() {
               status_documentacao: statusDocumentacao,
               status_final: statusFinal,
               bloqueado_em: new Date().toISOString(),
-            });
-            if (insErr) {
-              console.error('Erro ao criar bloqueio:', insErr);
-              alert(`Erro ao registrar veículo bloqueado: ${insErr.message}`);
-            }
+              // Limpar campos de desbloqueio ao re-bloquear
+              motivo_desbloqueio: null,
+              desbloqueado_por: null,
+              desbloqueado_em: null,
+            }, { onConflict: 'placa', ignoreDuplicates: false });
+
+          if (upsertErr) {
+            console.error('Erro ao sincronizar bloqueio:', upsertErr);
+            alert(`Erro ao salvar veículo bloqueado: ${upsertErr.message}`);
           }
         } else {
-          // DESBLOQUEANDO: atualizar status do setor correspondente
-          if (existingRecord) {
-            const statusField = tipo === 'financeiro' ? 'status_financeiro' : 'status_documentacao';
-            const otherField_status = tipo === 'financeiro' ? 'status_documentacao' : 'status_financeiro';
-            const otherStillBlocked = existingRecord[otherField_status] === 'BLOQUEADO';
+          // DESBLOQUEANDO: calcular novo status com base no estado da venda
+          const finBlocked = tipo === 'financeiro' ? false : venda.bloqueio_financeiro;
+          const docBlocked = tipo === 'documentacao' ? false : venda.bloqueio_documentacao;
+          const statusFinanceiro = finBlocked ? 'BLOQUEADO' : 'LIBERADO';
+          const statusDocumentacao = docBlocked ? 'BLOQUEADO' : 'LIBERADO';
+          const anyBlocked = finBlocked || docBlocked;
 
-            if (otherStillBlocked) {
-              // Outro setor ainda bloqueado — rebaixa para PARCIAL
-              const { error: updErr } = await supabase.from('veiculos_bloqueados')
-                .update({ [statusField]: 'LIBERADO', status_final: 'PARCIAL' })
-                .eq('id', existingRecord.id);
-              if (updErr) console.error('Erro ao atualizar status bloqueio:', updErr);
-            } else {
-              // Nenhum setor bloqueado — liberar completamente
-              const { error: updErr } = await supabase.from('veiculos_bloqueados')
-                .update({
-                  [statusField]: 'LIBERADO',
-                  status_final: 'LIBERADO',
-                  motivo_desbloqueio: `Desbloqueio ${tipo} via vendas`,
-                  desbloqueado_por: user.id,
-                  desbloqueado_em: new Date().toISOString(),
-                })
-                .eq('id', existingRecord.id);
-              if (updErr) console.error('Erro ao liberar veículo:', updErr);
-            }
+          const updatePayload = {
+            status_financeiro: statusFinanceiro,
+            status_documentacao: statusDocumentacao,
+            status_final: anyBlocked ? 'PARCIAL' : 'LIBERADO',
+          };
+
+          if (!anyBlocked) {
+            updatePayload.motivo_desbloqueio = `Desbloqueio ${tipo} via vendas`;
+            updatePayload.desbloqueado_por = user.id;
+            updatePayload.desbloqueado_em = new Date().toISOString();
           }
+
+          const { error: updErr } = await supabase.from('veiculos_bloqueados')
+            .update(updatePayload)
+            .eq('placa', venda.placa);
+
+          if (updErr) console.error('Erro ao atualizar status bloqueio:', updErr);
         }
       }
 
