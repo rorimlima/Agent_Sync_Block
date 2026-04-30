@@ -5,8 +5,8 @@
  */
 
 const DB_NAME = 'agent_sync_offline';
-const DB_VERSION = 3;
-const STORES = ['clientes', 'vendas', 'veiculos_bloqueados', 'audit_logs'];
+const DB_VERSION = 4;
+const STORES = ['clientes', 'vendas', 'veiculos_bloqueados', 'audit_logs', 'ocorrencias_agente'];
 
 let _db = null;
 let _dbPromise = null;
