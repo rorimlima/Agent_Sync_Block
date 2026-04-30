@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { exportToCSV } from '@/lib/export';
 import { exportBloqueadosPDF } from '@/lib/exportBloqueadosPDF';
-import { Lock, Search, Unlock, Loader2, X, Download, Shield, FileText, ShieldAlert, LockOpen, FileDown } from 'lucide-react';
+import { Lock, Search, Unlock, Loader2, X, Download, Shield, FileText, ShieldAlert, LockOpen, FileDown, Filter } from 'lucide-react';
 
 export default function BloqueadosPage() {
   const { setor, user } = useAuth();
@@ -19,6 +19,7 @@ export default function BloqueadosPage() {
   const { data: bloqueados, refetch } = useRealtime('veiculos_bloqueados', realtimeOpts);
   const [search, setSearch] = useState('');
   const [filterPlaca, setFilterPlaca] = useState('');
+  const [filterBloqueio, setFilterBloqueio] = useState('');
   const [activeTab, setActiveTab] = useState('bloqueado'); // 'bloqueado' | 'parcial'
   const [showModal, setShowModal] = useState(false);
   const [modalAction, setModalAction] = useState(''); // 'desbloqueio' | 'bloqueio'
@@ -48,7 +49,15 @@ export default function BloqueadosPage() {
       b.marca_modelo?.toLowerCase().includes(s) ||
       (!isAgente && (b.cod_cliente?.toLowerCase().includes(s) || b.razao_social?.toLowerCase().includes(s)));
     const matchPlaca = !filterPlaca || getLastDigit(b.placa) === filterPlaca;
-    return matchSearch && matchPlaca;
+
+    // Filtro por tipo de bloqueio
+    let matchBloqueio = true;
+    if (filterBloqueio === 'bloqueado') matchBloqueio = b.status_financeiro === 'BLOQUEADO' && b.status_documentacao === 'BLOQUEADO';
+    else if (filterBloqueio === 'bloq_fin') matchBloqueio = b.status_financeiro === 'BLOQUEADO';
+    else if (filterBloqueio === 'bloq_doc') matchBloqueio = b.status_documentacao === 'BLOQUEADO';
+    else if (filterBloqueio === 'livre') matchBloqueio = b.status_financeiro !== 'BLOQUEADO' && b.status_documentacao !== 'BLOQUEADO';
+
+    return matchSearch && matchPlaca && matchBloqueio;
   });
 
   const openAction = (item, tipo, action) => {
@@ -254,10 +263,26 @@ export default function BloqueadosPage() {
             placeholder={isAgente ? 'Buscar placa, chassi, modelo...' : 'Buscar placa, cliente...'}
             className="w-full pl-10 pr-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text placeholder-text-muted focus:outline-none focus:border-primary" />
         </div>
+        {!isAgente && (
+          <select value={filterBloqueio} onChange={e => setFilterBloqueio(e.target.value)}
+            className="px-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text focus:outline-none focus:border-primary">
+            <option value="">Status bloqueio</option>
+            <option value="bloqueado">🚫 Bloqueado (duplo)</option>
+            <option value="bloq_fin">🔒 Bloq. Financeiro</option>
+            <option value="bloq_doc">🔒 Bloq. Documentação</option>
+            <option value="livre">✅ Livre</option>
+          </select>
+        )}
         <select value={filterPlaca} onChange={e => setFilterPlaca(e.target.value)} className="px-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text focus:outline-none focus:border-primary">
           <option value="">Final placa</option>
           {[0,1,2,3,4,5,6,7,8,9].map(n => <option key={n} value={String(n)}>Final {n}</option>)}
         </select>
+        {(filterBloqueio || filterPlaca) && (
+          <button onClick={() => { setFilterBloqueio(''); setFilterPlaca(''); }}
+            className="flex items-center gap-1 px-3 py-2.5 text-xs text-danger bg-danger/10 rounded-xl hover:bg-danger/20 cursor-pointer transition-all border border-danger/20">
+            <X className="w-3 h-3" /> Limpar
+          </button>
+        )}
       </div>
 
       {/* Desktop Table */}
