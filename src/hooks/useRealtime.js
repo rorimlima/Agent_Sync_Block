@@ -30,6 +30,30 @@ export function useOnline() {
   return { isOnline, swReady };
 }
 
+const CACHE_VERSION = 'v2';
+
+const saveToCache = (key, data) => {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({
+      version: CACHE_VERSION,
+      timestamp: Date.now(),
+      data,
+    }));
+  } catch { /* ignorar */ }
+};
+
+const loadFromCache = (key, maxAgeMs = 60000) => {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(key));
+    if (!cached) return null;
+    if (cached.version !== CACHE_VERSION) return null;
+    if (Date.now() - cached.timestamp > maxAgeMs) return null;
+    return cached.data;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * Hook genérico para Supabase Realtime com cache offline e TTL
  */
@@ -153,15 +177,25 @@ export function useRealtime(table, options = {}) {
     }
   }, [table, resolvedSelect, orderBy, orderAsc, pageSize, fetchAll, limit]);
 
-  // Safety timer — força reset de loading se ficar travado por mais de 45s
+  // Safety timer escalonado — avisa em 20s, força reset em 45s
   useEffect(() => {
-    if (loading) {
-      const safetyTimer = setTimeout(() => {
-        setLoading(false);
-      }, 45000);
-      return () => clearTimeout(safetyTimer);
-    }
-  }, [loading]);
+    if (!loading) return;
+
+    const warnTimer = setTimeout(() => {
+      console.warn(`[Agent Sync] Loading longo detectado (20s) na tabela ${table}`);
+    }, 20000);
+
+    const killTimer = setTimeout(() => {
+      console.error(`[Agent Sync] Safety timer atingido — forçando reset na tabela ${table}`);
+      setLoading(false);
+      setError('A conexão expirou. Por favor, tente novamente.');
+    }, 45000);
+
+    return () => {
+      clearTimeout(warnTimer);
+      clearTimeout(killTimer);
+    };
+  }, [loading, table]);
 
   useEffect(() => {
     fetchData();
@@ -187,23 +221,33 @@ export function useRealtime(table, options = {}) {
       })
       .subscribe((status) => setConnected(status === 'SUBSCRIBED'));
 
-    // Visibilitychange — reconectar e refetch quando o usuário volta para a aba
+    // Visibilitychange + Focus — reconectar e refetch
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // Só refetch se faz mais de 30s desde o último fetch
         const elapsed = Date.now() - lastFetchRef.current;
         if (elapsed > 30000) {
-          setLoading(false); // Cancela qualquer loading travado
-          // Reconectar canal realtime (pode ter morrido)
+          setLoading(false);
           supabase.removeChannel(channel);
           fetchData();
         }
       }
     };
+    
+    const handleFocus = () => {
+      const elapsed = Date.now() - lastFetchRef.current;
+      if (elapsed > 30000) {
+        setLoading(false);
+        supabase.removeChannel(channel);
+        fetchData();
+      }
+    };
+    
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(channel);
     };
   }, [table, fetchData, skipRealtime]);
@@ -226,47 +270,58 @@ export function useStats() {
   const fetchStats = useCallback(async () => {
     try {
       if (!navigator.onLine) {
-        // Tentar ler stats do cache
-        try {
-          const cached = sessionStorage.getItem('asb-stats');
-          if (cached) setStats(JSON.parse(cached));
-        } catch {}
+        const cached = loadFromCache('asb-stats', 86400000); // 24h
+        if (cached) setStats(cached);
         return;
       }
 
       setLoading(true);
 
-      // Uma única query RPC em vez de loops
-      const { data, error } = await supabase.rpc('get_dashboard_stats');
-      if (error) throw error;
+      // Retry exponencial
+      let data = null;
+      let error = null;
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const res = await supabase.rpc('get_dashboard_stats');
+        data = res.data;
+        error = res.error;
+        if (!error) break;
+        if (attempt === maxRetries) throw error;
+        const delay = Math.min(1000 * 2 ** attempt, 10000);
+        console.warn(`[Agent Sync] Tentativa ${attempt} falhou, retentando em ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+      }
 
       if (data && mountedRef.current) {
         const parsed = typeof data === 'string' ? JSON.parse(data) : data;
-        setStats(parsed);
-        // Cache para uso offline
-        try { sessionStorage.setItem('asb-stats', JSON.stringify(parsed)); } catch {}
+        
+        // Validação de dados (não renderizar com info faltando)
+        if (parsed && typeof parsed.clientes === 'number') {
+          setStats(parsed);
+          saveToCache('asb-stats', parsed);
+        } else {
+          console.error('[Agent Sync] Dados incompletos em stats:', parsed);
+        }
       }
     } catch (err) {
       console.error('Stats RPC error:', err);
-      // Fallback: tentar cache
-      try {
-        const cached = sessionStorage.getItem('asb-stats');
-        if (cached) setStats(JSON.parse(cached));
-      } catch {}
+      const cached = loadFromCache('asb-stats', 86400000);
+      if (cached) setStats(cached);
     } finally {
       if (mountedRef.current) setLoading(false);
       lastFetchRef.current = Date.now();
     }
   }, []);
 
-  // Safety timer — força reset de loading se ficar travado por mais de 45s
+  // Safety timer escalonado
   useEffect(() => {
-    if (loading) {
-      const safetyTimer = setTimeout(() => {
-        if (mountedRef.current) setLoading(false);
-      }, 45000);
-      return () => clearTimeout(safetyTimer);
-    }
+    if (!loading) return;
+    const warnTimer = setTimeout(() => console.warn('[Agent Sync] Loading longo em stats (20s)'), 20000);
+    const killTimer = setTimeout(() => {
+      console.error('[Agent Sync] Safety timer atingido em stats');
+      if (mountedRef.current) setLoading(false);
+    }, 45000);
+    return () => { clearTimeout(warnTimer); clearTimeout(killTimer); };
   }, [loading]);
 
   useEffect(() => {
@@ -290,23 +345,34 @@ export function useStats() {
         .subscribe()
     );
 
-    // Visibilitychange — refetch stats quando o usuário volta para a aba
+    // Visibilitychange + focus
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && mountedRef.current) {
         const elapsed = Date.now() - lastFetchRef.current;
         if (elapsed > 30000) {
-          setLoading(false); // Cancela qualquer loading travado
+          setLoading(false);
+          fetchStats();
+        }
+      }
+    };
+    const handleFocus = () => {
+      if (mountedRef.current) {
+        const elapsed = Date.now() - lastFetchRef.current;
+        if (elapsed > 30000) {
+          setLoading(false);
           fetchStats();
         }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       mountedRef.current = false;
       if (debounceTimer) clearTimeout(debounceTimer);
       channels.forEach(ch => supabase.removeChannel(ch));
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [fetchStats]);
 

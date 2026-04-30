@@ -39,7 +39,13 @@ export default function ColaboradoresPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const abortControllerRef = useRef(null);
 
-  // Visibilitychange — reset loading states quando o usuário volta para a aba
+  const createFreshController = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+    return abortControllerRef.current;
+  };
+
+  // Visibilitychange + Focus — reset loading states
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -49,19 +55,36 @@ export default function ColaboradoresPage() {
         setLoading(false);
       }
     };
+    const handleFocus = () => {
+      abortControllerRef.current?.abort();
+      setFormLoading(false);
+      setDeleteLoading(false);
+      setLoading(false);
+    };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
-  // Safety timer — força reset de formLoading se ficar travado por mais de 45s
+  // Safety timer escalonado — avisa em 20s, força reset em 45s
   useEffect(() => {
-    if (formLoading) {
-      const safetyTimer = setTimeout(() => {
-        abortControllerRef.current?.abort();
-        setFormLoading(false);
-      }, 45000);
-      return () => clearTimeout(safetyTimer);
-    }
+    if (!formLoading) return;
+    const warnTimer = setTimeout(() => {
+      console.warn('[Agent Sync] Loading longo detectado (20s)');
+    }, 20000);
+    const killTimer = setTimeout(() => {
+      console.error('[Agent Sync] Safety timer atingido — forçando reset');
+      abortControllerRef.current?.abort();
+      setFormLoading(false);
+      setFormError('A conexão expirou. Por favor, tente novamente.');
+    }, 45000);
+    return () => {
+      clearTimeout(warnTimer);
+      clearTimeout(killTimer);
+    };
   }, [formLoading]);
 
   const showToast = (message, type = 'success') => {
@@ -125,9 +148,8 @@ export default function ColaboradoresPage() {
     setFormLoading(true);
     setFormError('');
 
-    // AbortController com timeout de 30s
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+    // AbortController robusto
+    const controller = createFreshController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
@@ -139,30 +161,45 @@ export default function ColaboradoresPage() {
         return;
       }
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-colaborador`,
-        {
-          method: 'POST',
-          signal: controller.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            nome: formData.nome.trim(),
-            email: formData.email.trim(),
-            senha: formData.senha,
-            funcao: formData.funcao,
-            ativo: formData.ativo,
-          }),
+      // Retry exponencial
+      let response = null;
+      let result = null;
+      const maxRetries = 3;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          response = await fetch(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-colaborador`,
+            {
+              method: 'POST',
+              signal: controller.signal,
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+              },
+              body: JSON.stringify({
+                nome: formData.nome.trim(),
+                email: formData.email.trim(),
+                senha: formData.senha,
+                funcao: formData.funcao,
+                ativo: formData.ativo,
+              }),
+            }
+          );
+          result = await response.json();
+          break; // Sucesso (se o fetch não falhar a nível de rede/abort)
+        } catch (err) {
+          if (err.name === 'AbortError') throw err; // Não retenta timeout/abort
+          if (attempt === maxRetries) throw err;
+          const delay = Math.min(1000 * 2 ** attempt, 10000);
+          console.warn(`[Agent Sync] Tentativa ${attempt} falhou, retentando em ${delay}ms`);
+          await new Promise(res => setTimeout(res, delay));
         }
-      );
-
-      const result = await response.json();
+      }
 
       if (!response.ok) {
-        setFormError(result.error || 'Erro ao criar colaborador');
+        setFormError(result?.error || 'Erro ao criar colaborador');
         setFormLoading(false);
         return;
       }
@@ -172,8 +209,10 @@ export default function ColaboradoresPage() {
       await fetchColaboradores();
     } catch (err) {
       if (err.name === 'AbortError') {
+        console.warn('[Agent Sync] Request abortado por timeout ou inatividade');
         setFormError('Tempo limite excedido. Tente novamente.');
       } else {
+        console.error('[Agent Sync] Erro no fetch:', err);
         setFormError(err.message || 'Erro inesperado');
       }
     } finally {
