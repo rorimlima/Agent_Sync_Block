@@ -38,6 +38,7 @@ export function useRealtime(table, options = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connected, setConnected] = useState(false);
+  const lastFetchRef = useRef(0);
 
   const { 
     select, 
@@ -148,8 +149,19 @@ export function useRealtime(table, options = {}) {
       } catch {}
     } finally {
       setLoading(false);
+      lastFetchRef.current = Date.now();
     }
   }, [table, resolvedSelect, orderBy, orderAsc, pageSize, fetchAll, limit]);
+
+  // Safety timer — força reset de loading se ficar travado por mais de 45s
+  useEffect(() => {
+    if (loading) {
+      const safetyTimer = setTimeout(() => {
+        setLoading(false);
+      }, 45000);
+      return () => clearTimeout(safetyTimer);
+    }
+  }, [loading]);
 
   useEffect(() => {
     fetchData();
@@ -175,7 +187,25 @@ export function useRealtime(table, options = {}) {
       })
       .subscribe((status) => setConnected(status === 'SUBSCRIBED'));
 
-    return () => supabase.removeChannel(channel);
+    // Visibilitychange — reconectar e refetch quando o usuário volta para a aba
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Só refetch se faz mais de 30s desde o último fetch
+        const elapsed = Date.now() - lastFetchRef.current;
+        if (elapsed > 30000) {
+          setLoading(false); // Cancela qualquer loading travado
+          // Reconectar canal realtime (pode ter morrido)
+          supabase.removeChannel(channel);
+          fetchData();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      supabase.removeChannel(channel);
+    };
   }, [table, fetchData, skipRealtime]);
 
   return { data, loading, error, connected, refetch: fetchData };
@@ -191,6 +221,7 @@ export function useStats() {
   });
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
+  const lastFetchRef = useRef(0);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -224,8 +255,19 @@ export function useStats() {
       } catch {}
     } finally {
       if (mountedRef.current) setLoading(false);
+      lastFetchRef.current = Date.now();
     }
   }, []);
+
+  // Safety timer — força reset de loading se ficar travado por mais de 45s
+  useEffect(() => {
+    if (loading) {
+      const safetyTimer = setTimeout(() => {
+        if (mountedRef.current) setLoading(false);
+      }, 45000);
+      return () => clearTimeout(safetyTimer);
+    }
+  }, [loading]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -248,10 +290,23 @@ export function useStats() {
         .subscribe()
     );
 
+    // Visibilitychange — refetch stats quando o usuário volta para a aba
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && mountedRef.current) {
+        const elapsed = Date.now() - lastFetchRef.current;
+        if (elapsed > 30000) {
+          setLoading(false); // Cancela qualquer loading travado
+          fetchStats();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       mountedRef.current = false;
       if (debounceTimer) clearTimeout(debounceTimer);
       channels.forEach(ch => supabase.removeChannel(ch));
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchStats]);
 

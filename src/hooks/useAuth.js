@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const AuthContext = createContext(null);
@@ -8,6 +8,37 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [colaborador, setColaborador] = useState(null);
   const [loading, setLoading] = useState(true);
+  const lastAuthCheckRef = useRef(0);
+
+  // Safety timer — força reset do loading de auth se ficar travado por mais de 45s
+  useEffect(() => {
+    if (loading) {
+      const safetyTimer = setTimeout(() => {
+        setLoading(false);
+      }, 45000);
+      return () => clearTimeout(safetyTimer);
+    }
+  }, [loading]);
+
+  // Visibilitychange — reset auth loading quando o usuário volta para a aba
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const elapsed = Date.now() - lastAuthCheckRef.current;
+        // Se faz mais de 30s, forçar reset do loading e revalidar sessão
+        if (elapsed > 30000) {
+          setLoading(false);
+          supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user) {
+              setUser(session.user);
+            }
+          });
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   // Fetch colaborador profile from DB (with sessionStorage cache)
   const fetchColaborador = useCallback(async (authUser) => {
@@ -59,6 +90,7 @@ export function AuthProvider({ children }) {
         await fetchColaborador(session.user);
       }
       setLoading(false);
+      lastAuthCheckRef.current = Date.now();
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {

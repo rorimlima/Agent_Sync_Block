@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "app/**/*.js": {
+      "maxDuration": 60
+    }
+  }
+}

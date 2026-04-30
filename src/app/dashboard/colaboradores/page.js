@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -37,6 +37,32 @@ export default function ColaboradoresPage() {
   // Confirm delete
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const abortControllerRef = useRef(null);
+
+  // Visibilitychange — reset loading states quando o usuário volta para a aba
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        abortControllerRef.current?.abort();
+        setFormLoading(false);
+        setDeleteLoading(false);
+        setLoading(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // Safety timer — força reset de formLoading se ficar travado por mais de 45s
+  useEffect(() => {
+    if (formLoading) {
+      const safetyTimer = setTimeout(() => {
+        abortControllerRef.current?.abort();
+        setFormLoading(false);
+      }, 45000);
+      return () => clearTimeout(safetyTimer);
+    }
+  }, [formLoading]);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -99,11 +125,17 @@ export default function ColaboradoresPage() {
     setFormLoading(true);
     setFormError('');
 
+    // AbortController com timeout de 30s
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         setFormError('Sessão expirada. Faça login novamente.');
         setFormLoading(false);
+        clearTimeout(timeoutId);
         return;
       }
 
@@ -111,6 +143,7 @@ export default function ColaboradoresPage() {
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-colaborador`,
         {
           method: 'POST',
+          signal: controller.signal,
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`,
@@ -138,8 +171,13 @@ export default function ColaboradoresPage() {
       setShowModal(false);
       await fetchColaboradores();
     } catch (err) {
-      setFormError(err.message || 'Erro inesperado');
+      if (err.name === 'AbortError') {
+        setFormError('Tempo limite excedido. Tente novamente.');
+      } else {
+        setFormError(err.message || 'Erro inesperado');
+      }
     } finally {
+      clearTimeout(timeoutId);
       setFormLoading(false);
     }
   };
