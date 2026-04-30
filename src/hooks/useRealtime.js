@@ -98,26 +98,24 @@ export function useRealtime(table, options = {}) {
           if (err) throw err;
           setData(result || []);
         } else {
-          // Verificar TTL do cache antes de baixar tudo
+          const hasFilter = filterRef.current && Object.keys(filterRef.current).length > 0;
+
+          // Verificar TTL do cache antes de baixar tudo (APENAS se não houver filtro server-side)
           let useCached = false;
-          try {
-            const { isCacheFresh, getCachedData } = await import('@/lib/offlineCache');
-            const ttl = getTTL(table);
-            const fresh = await isCacheFresh(table, ttl);
-            if (fresh) {
-              let cached = await getCachedData(table);
-              if (cached.length > 0) {
-                // Aplicar filtro client-side nos dados do cache
-                if (filterRef.current) {
-                  cached = cached.filter(row =>
-                    Object.entries(filterRef.current).every(([k, v]) => row[k] === v)
-                  );
+          if (!hasFilter) {
+            try {
+              const { isCacheFresh, getCachedData } = await import('@/lib/offlineCache');
+              const ttl = getTTL(table);
+              const fresh = await isCacheFresh(table, ttl);
+              if (fresh) {
+                let cached = await getCachedData(table);
+                if (cached.length > 0) {
+                  setData(cached);
+                  useCached = true;
                 }
-                setData(cached);
-                useCached = true;
               }
-            }
-          } catch {}
+            } catch {}
+          }
 
           if (!useCached) {
             let allRows = [];
@@ -126,7 +124,7 @@ export function useRealtime(table, options = {}) {
 
             while (hasMore) {
               let query = supabase.from(table).select(resolvedSelect);
-              if (filterRef.current) {
+              if (hasFilter) {
                 Object.entries(filterRef.current).forEach(([key, value]) => {
                   query = query.eq(key, value);
                 });
@@ -147,12 +145,14 @@ export function useRealtime(table, options = {}) {
 
             setData(allRows);
 
-            // Cache para uso offline
-            try {
-              const { cacheTableData, setCacheTimestamp } = await import('@/lib/offlineCache');
-              await cacheTableData(table, allRows);
-              await setCacheTimestamp(table);
-            } catch {}
+            // Cache para uso offline (apenas dados integrais)
+            if (!hasFilter) {
+              try {
+                const { cacheTableData, setCacheTimestamp } = await import('@/lib/offlineCache');
+                await cacheTableData(table, allRows);
+                await setCacheTimestamp(table);
+              } catch {}
+            }
           }
         }
       } else {
@@ -160,7 +160,18 @@ export function useRealtime(table, options = {}) {
         try {
           const { getCachedData } = await import('@/lib/offlineCache');
           const cached = await getCachedData(table);
-          setData(cached);
+          if (cached.length > 0) {
+            if (filterRef.current) {
+              const filtered = cached.filter(row => 
+                Object.entries(filterRef.current).every(([k, v]) => row[k] === v)
+              );
+              setData(filtered);
+            } else {
+              setData(cached);
+            }
+          } else {
+            setData([]);
+          }
         } catch { setData([]); }
       }
     } catch (err) {
