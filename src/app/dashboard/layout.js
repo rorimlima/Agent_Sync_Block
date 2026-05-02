@@ -4,7 +4,11 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useTheme } from '@/hooks/useTheme';
+import { useSyncInit } from '@/hooks/useSyncEngine';
 import { FUNCOES } from '@/lib/constants';
+import { getTablesForRole, getFilter } from '@/lib/syncByRole';
+import { destroySync } from '@/lib/sync-engine';
+import SyncIndicator from './SyncIndicator';
 import { 
   LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog,
   LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown, KeyRound, Eye, EyeOff, CheckCircle2, ClipboardList, ShieldAlert
@@ -20,6 +24,13 @@ export default function DashboardLayout({ children }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [online, setOnline] = useState(true);
+
+  // ── Sync Engine Init — sincroniza as tabelas do role do usuário ─────────
+  const syncTables = colaborador?.funcao ? getTablesForRole(colaborador.funcao) : [];
+  const syncFilters = colaborador?.funcao === 'agente'
+    ? { veiculos_bloqueados: { status_final: 'VEÍCULO BLOQUEADO' } }
+    : {};
+  useSyncInit(syncTables, syncFilters, !!colaborador?.funcao);
 
   // Change Password Modal
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -94,6 +105,7 @@ export default function DashboardLayout({ children }) {
   const displayName = colaborador?.nome || user.email;
 
   const handleLogout = async () => {
+    destroySync(); // Limpa canais Realtime e subscribers do Sync Engine
     await logout();
     router.replace('/login');
   };
@@ -110,12 +122,14 @@ export default function DashboardLayout({ children }) {
             </div>
             <div>
               <h1 className="text-sm font-bold text-text">Agent Sync Block</h1>
-              <div className="flex items-center gap-1.5 mt-0.5">
+              <div className="flex items-center gap-2 mt-0.5">
                 {online ? (
                   <><Wifi className="w-3 h-3 text-success" /><span className="text-xs text-success">Online</span></>
                 ) : (
                   <><WifiOff className="w-3 h-3 text-danger" /><span className="text-xs text-danger">Offline</span></>
                 )}
+                <span className="text-border">·</span>
+                <SyncIndicator />
               </div>
             </div>
           </div>
@@ -189,6 +203,7 @@ export default function DashboardLayout({ children }) {
         </div>
         <div className="flex items-center gap-3">
           {online ? <Wifi className="w-4 h-4 text-success" /> : <WifiOff className="w-4 h-4 text-danger" />}
+          <SyncIndicator compact />
           <button onClick={toggleTheme} className="text-text-muted hover:text-primary cursor-pointer">
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
