@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useRealtime } from '@/hooks/useRealtime';
+import { useSyncTable, useMutate } from '@/hooks/useSyncEngine';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { formatDateTime } from '@/lib/utils';
@@ -25,10 +25,11 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
 
 export default function AgentePage() {
   const { setor, user, hasRole } = useAuth();
-  const { data: bloqueados, loading: bloqueadosLoading } = useRealtime('veiculos_bloqueados', {
-    filter: { status_final: 'VEÍCULO BLOQUEADO' },
+  const { mutate } = useMutate();
+  const { data: bloqueados, loading: bloqueadosLoading } = useSyncTable('veiculos_bloqueados', {
+    filter: (b) => b.status_final === 'VEÍCULO BLOQUEADO',
   });
-  const { data: ocorrencias, refetch } = useRealtime('ocorrencias_agente', {
+  const { data: ocorrencias } = useSyncTable('ocorrencias_agente', {
     orderBy: 'created_at',
     orderAsc: false,
   });
@@ -130,40 +131,28 @@ export default function AgentePage() {
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      // Retry exponencial na inserção
-      let insertErr = null;
-      const maxRetries = 3;
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        const { error } = await supabase.from('ocorrencias_agente').insert({
-          bloqueio_id: selectedVeiculo.id,
-          placa: selectedVeiculo.placa,
-          observacao: observacao.trim(),
-          fotos,
-          agente_id: user.id,
-        });
-        insertErr = error;
-        if (!insertErr) break;
-        if (attempt === maxRetries) break;
-        const delay = Math.min(1000 * 2 ** attempt, 10000);
-        console.warn(`[Agent] Tentativa ${attempt} falhou, retentando em ${delay}ms`);
-        await new Promise(r => setTimeout(r, delay));
-      }
+      // Mutação Optimistic — UI atualiza INSTANTANEAMENTE
+      await mutate('ocorrencias_agente', 'INSERT', {
+        bloqueio_id: selectedVeiculo.id,
+        placa: selectedVeiculo.placa,
+        observacao: observacao.trim(),
+        fotos,
+        agente_id: user.id,
+      });
 
-      if (insertErr) throw insertErr;
-
-      // Audit log (non-blocking)
-      supabase.from('audit_logs').insert({
+      // Audit log via mutation queue (non-blocking)
+      await mutate('audit_logs', 'INSERT', {
         acao: 'OCORRENCIA',
         setor: 'agente',
         detalhes: `Ocorrência registrada — Placa: ${selectedVeiculo.placa} | ${fotos.length} foto(s)`,
         user_id: user.id,
         user_email: user.email,
-      }).then(() => {});
+      });
 
       setObservacao('');
       setFotos([]);
       setSelectedVeiculo(null);
-      refetch();
+      // SEM refetch — UI já atualizou via Optimistic UI!
     } catch (err) {
       if (err.name === 'AbortError') {
         console.warn('[Agent] Envio abortado por timeout ou inatividade');

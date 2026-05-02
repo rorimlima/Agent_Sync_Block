@@ -1,8 +1,7 @@
 'use client';
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useRealtime } from '@/hooks/useRealtime';
+import { useState, useMemo, useEffect } from 'react';
+import { useSyncTable, useMutate } from '@/hooks/useSyncEngine';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { exportToCSV } from '@/lib/export';
 import { ShoppingCart, Search, Lock, Unlock, LockOpen, Loader2, Download, Filter, X, Shield, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -11,7 +10,8 @@ const PAGE_SIZE = 50;
 
 export default function VendasPage() {
   const { setor, user, hasRole } = useAuth();
-  const { data: vendas, refetch } = useRealtime('vendas', { orderBy: 'created_at', orderAsc: false });
+  const { mutate } = useMutate();
+  const { data: vendas } = useSyncTable('vendas', { orderBy: 'created_at', orderAsc: false });
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterBloqueio, setFilterBloqueio] = useState('');
@@ -91,91 +91,14 @@ export default function VendasPage() {
     const newValue = !venda[field];
 
     try {
-      // 1) Atualizar a venda no Supabase IMEDIATAMENTE
-      const { error: vendaErr } = await supabase
-        .from('vendas')
-        .update({ [field]: newValue, updated_at: new Date().toISOString() })
-        .eq('id', venda.id);
+      // Mutação Optimistic — UI atualiza INSTANTANEAMENTE
+      await mutate('vendas', 'UPDATE', {
+        id: venda.id,
+        [field]: newValue,
+      });
 
-      if (vendaErr) {
-        console.error('Erro ao atualizar venda:', vendaErr);
-        alert(`Erro ao salvar bloqueio: ${vendaErr.message}`);
-        setLoadingId(null);
-        return;
-      }
-
-      // 2) Sincronizar veiculos_bloqueados
-      if (venda.placa) {
-        // Calcular status com base no estado da venda
-        const finBlocked = tipo === 'financeiro' ? newValue : venda.bloqueio_financeiro;
-        const docBlocked = tipo === 'documentacao' ? newValue : venda.bloqueio_documentacao;
-        const statusFinanceiro = finBlocked ? 'BLOQUEADO' : 'LIBERADO';
-        const statusDocumentacao = docBlocked ? 'BLOQUEADO' : 'LIBERADO';
-        const bothBlocked = finBlocked && docBlocked;
-        const anyBlocked = finBlocked || docBlocked;
-        const statusFinal = bothBlocked ? 'VEÍCULO BLOQUEADO' : anyBlocked ? 'PARCIAL' : 'LIBERADO';
-
-        const updateData = {
-          status_financeiro: statusFinanceiro,
-          status_documentacao: statusDocumentacao,
-          status_final: statusFinal,
-        };
-
-        if (newValue) {
-          // Bloqueando — limpar campos de desbloqueio
-          updateData.bloqueado_em = new Date().toISOString();
-          updateData.motivo_desbloqueio = null;
-          updateData.desbloqueado_por = null;
-          updateData.desbloqueado_em = null;
-        } else if (!anyBlocked) {
-          // Desbloqueio total
-          updateData.motivo_desbloqueio = `Desbloqueio ${tipo} via vendas`;
-          updateData.desbloqueado_por = user.id;
-          updateData.desbloqueado_em = new Date().toISOString();
-        }
-
-        // Tentar UPDATE primeiro (cenário mais comum — registro já existe)
-        const { data: updated, error: updErr } = await supabase
-          .from('veiculos_bloqueados')
-          .update(updateData)
-          .eq('placa', venda.placa)
-          .select('id');
-
-        if (updErr) {
-          console.error('Erro ao atualizar bloqueio:', updErr);
-        }
-
-        // Se UPDATE não afetou nenhum registro, INSERT novo
-        if (!updated || updated.length === 0) {
-          const { error: insErr } = await supabase.from('veiculos_bloqueados').insert({
-            placa: venda.placa,
-            final_placa: venda.placa?.slice(-1) || null,
-            cod_cliente: venda.cod_cliente,
-            chassi: venda.chassi || null,
-            marca_modelo: venda.marca_modelo || null,
-            razao_social: venda.razao_social || null,
-            venda_id: venda.id,
-            ...updateData,
-            bloqueado_em: new Date().toISOString(),
-          });
-
-          // Se INSERT falhou por duplicate key (race condition), retry como UPDATE
-          if (insErr) {
-            if (insErr.code === '23505') {
-              console.warn('Race condition detectada, retrying como UPDATE...');
-              await supabase.from('veiculos_bloqueados')
-                .update(updateData)
-                .eq('placa', venda.placa);
-            } else {
-              console.error('Erro ao criar bloqueio:', insErr);
-              alert(`Erro ao registrar veículo bloqueado: ${insErr.message}`);
-            }
-          }
-        }
-      }
-
-      // 3) Registrar log de auditoria
-      await supabase.from('audit_logs').insert({
+      // Audit log via mutation queue (non-blocking)
+      await mutate('audit_logs', 'INSERT', {
         acao: newValue ? 'BLOQUEIO' : 'DESBLOQUEIO',
         setor,
         detalhes: `${newValue ? 'Bloqueio' : 'Desbloqueio'} ${tipo} — Placa: ${venda.placa} | ${venda.razao_social || venda.cod_cliente}`,
@@ -183,14 +106,7 @@ export default function VendasPage() {
         user_email: user.email,
       });
 
-      // 4) Invalidar cache para forçar dados frescos
-      try {
-        localStorage.removeItem('cache_ts_vendas');
-        localStorage.removeItem('cache_ts_veiculos_bloqueados');
-      } catch {}
-
-      // 5) Refetch dados frescos do servidor
-      await refetch();
+      // SEM refetch — UI já atualizou via Optimistic UI!
     } catch (err) {
       console.error('Erro inesperado ao processar bloqueio:', err);
       alert('Erro inesperado ao processar bloqueio. Verifique sua conexão.');

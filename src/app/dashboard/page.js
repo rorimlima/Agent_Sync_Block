@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStats } from '@/hooks/useRealtime';
-import { useRealtime } from '@/hooks/useRealtime';
+import { useSyncTable } from '@/hooks/useSyncEngine';
 import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency } from '@/lib/utils';
 import { Lock, DollarSign, Activity, Clock, Users, ShoppingCart } from 'lucide-react';
@@ -11,7 +11,7 @@ export default function DashboardPage() {
   const { colaborador, hasRole } = useAuth();
   const router = useRouter();
   const { stats, loading: statsLoading } = useStats();
-  const { data: auditLogs } = useRealtime('audit_logs', { orderBy: 'created_at', orderAsc: false, limit: 20 });
+  const { data: auditLogs } = useSyncTable('audit_logs', { orderBy: 'created_at', orderAsc: false });
 
   const funcao = colaborador?.funcao;
 

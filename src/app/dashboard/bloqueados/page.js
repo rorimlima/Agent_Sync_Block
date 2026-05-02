@@ -1,8 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { useRealtime } from '@/hooks/useRealtime';
+import { useSyncTable, useMutate } from '@/hooks/useSyncEngine';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import { exportToCSV } from '@/lib/export';
 import { exportBloqueadosPDF } from '@/lib/exportBloqueadosPDF';
 import { Lock, Search, Unlock, Loader2, X, Download, Shield, FileText, ShieldAlert, LockOpen, FileDown, Filter } from 'lucide-react';
@@ -10,13 +9,19 @@ import { Lock, Search, Unlock, Loader2, X, Download, Shield, FileText, ShieldAle
 export default function BloqueadosPage() {
   const { setor, user } = useAuth();
   const isAgente = setor === 'agente';
+  const { mutate } = useMutate();
 
-  // Agente: só vê veículos com status_final = VEÍCULO BLOQUEADO (ambos setores)
-  const realtimeOpts = isAgente
-    ? { orderBy: 'bloqueado_em', orderAsc: false, filter: { status_final: 'VEÍCULO BLOQUEADO' } }
-    : { orderBy: 'bloqueado_em', orderAsc: false };
+  // Sync Engine: lê do IndexedDB local, atualiza automaticamente via Realtime
+  const tableFilter = isAgente
+    ? (b) => b.status_final === 'VEÍCULO BLOQUEADO'
+    : undefined;
 
-  const { data: bloqueados, refetch } = useRealtime('veiculos_bloqueados', realtimeOpts);
+  const { data: bloqueados } = useSyncTable('veiculos_bloqueados', {
+    orderBy: 'bloqueado_em',
+    orderAsc: false,
+    filter: tableFilter,
+  });
+
   const [search, setSearch] = useState('');
   const [filterPlaca, setFilterPlaca] = useState('');
   const [filterBloqueio, setFilterBloqueio] = useState('');
@@ -86,19 +91,25 @@ export default function BloqueadosPage() {
         updates.desbloqueado_por = user.id;
         updates.desbloqueado_em = new Date().toISOString();
 
-        const { error: bloqErr } = await supabase
-          .from('veiculos_bloqueados').update(updates).eq('id', selected.id);
-        if (bloqErr) { alert(`Erro: ${bloqErr.message}`); setLoading(false); return; }
+        // Mutação Optimistic — UI atualiza INSTANTANEAMENTE
+        const sideEffects = [];
 
-        // Atualizar venda
+        // Side effect: Atualizar venda
         if (selected.venda_id) {
-          const vendaUpdate = { updated_at: new Date().toISOString() };
+          const vendaUpdate = {};
           if (actionTipo === 'financeiro') vendaUpdate.bloqueio_financeiro = false;
           if (actionTipo === 'documentacao') vendaUpdate.bloqueio_documentacao = false;
-          await supabase.from('vendas').update(vendaUpdate).eq('id', selected.venda_id);
+          sideEffects.push({
+            table: 'vendas',
+            operation: 'UPDATE',
+            record: { id: selected.venda_id, ...vendaUpdate },
+          });
         }
 
-        await supabase.from('audit_logs').insert({
+        await mutate('veiculos_bloqueados', 'UPDATE', { id: selected.id, ...updates }, { sideEffects });
+
+        // Audit log (non-blocking, via mutation queue)
+        await mutate('audit_logs', 'INSERT', {
           acao: 'DESBLOQUEIO', setor,
           detalhes: `Desbloqueio ${actionTipo} — Placa: ${selected.placa} | Motivo: ${motivo}`,
           user_id: user.id, user_email: user.email,
@@ -111,33 +122,32 @@ export default function BloqueadosPage() {
         if (actionTipo === 'documentacao') updates.status_documentacao = 'BLOQUEADO';
         updates.status_final = 'VEÍCULO BLOQUEADO';
 
-        const { error: bloqErr } = await supabase
-          .from('veiculos_bloqueados').update(updates).eq('id', selected.id);
-        if (bloqErr) { alert(`Erro: ${bloqErr.message}`); setLoading(false); return; }
+        const sideEffects = [];
 
-        // Atualizar venda
+        // Side effect: Atualizar venda
         if (selected.venda_id) {
-          const vendaUpdate = { updated_at: new Date().toISOString() };
+          const vendaUpdate = {};
           if (actionTipo === 'financeiro') vendaUpdate.bloqueio_financeiro = true;
           if (actionTipo === 'documentacao') vendaUpdate.bloqueio_documentacao = true;
-          await supabase.from('vendas').update(vendaUpdate).eq('id', selected.venda_id);
+          sideEffects.push({
+            table: 'vendas',
+            operation: 'UPDATE',
+            record: { id: selected.venda_id, ...vendaUpdate },
+          });
         }
 
-        await supabase.from('audit_logs').insert({
+        await mutate('veiculos_bloqueados', 'UPDATE', { id: selected.id, ...updates }, { sideEffects });
+
+        // Audit log
+        await mutate('audit_logs', 'INSERT', {
           acao: 'BLOQUEIO', setor,
           detalhes: `Bloqueio ${actionTipo} — Placa: ${selected.placa} | Motivo: ${motivo}`,
           user_id: user.id, user_email: user.email,
         });
       }
 
-      // Invalidar cache
-      try {
-        localStorage.removeItem('cache_ts_vendas');
-        localStorage.removeItem('cache_ts_veiculos_bloqueados');
-      } catch {}
-
       setShowModal(false);
-      await refetch();
+      // SEM refetch — a UI já atualizou via Optimistic UI!
     } catch (err) {
       console.error('Erro:', err);
       alert('Erro inesperado. Verifique sua conexão.');

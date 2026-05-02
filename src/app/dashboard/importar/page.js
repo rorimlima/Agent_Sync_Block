@@ -3,7 +3,7 @@ import { useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { smartSyncVendas, fillMissingRazaoSocial } from '@/lib/smartSync';
 import { useAuth } from '@/hooks/useAuth';
-import { useRealtime } from '@/hooks/useRealtime';
+import { useSyncTable } from '@/hooks/useSyncEngine';
 import { Upload, Users, ShoppingCart, FileSpreadsheet, Check, X, Loader2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 
@@ -14,7 +14,7 @@ export default function ImportarPage() {
     return <div className="text-center py-20 text-text-muted">Acesso restrito</div>;
   }
 
-  const { data: logs, refetch: refetchLogs } = useRealtime('import_logs', { orderBy: 'created_at', orderAsc: false });
+  const { data: logs, refetch: refetchLogs } = useSyncTable('import_logs', { orderBy: 'created_at', orderAsc: false });
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState(null);
   const [importType, setImportType] = useState('');
