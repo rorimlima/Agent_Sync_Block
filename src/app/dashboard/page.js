@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStats } from '@/hooks/useRealtime';
-import { useSyncTable } from '@/hooks/useSyncEngine';
+import { useSyncTable } from '@/hooks/useSyncEngineV4';
 import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency } from '@/lib/utils';
 import { Lock, DollarSign, Activity, Clock, Users, ShoppingCart } from 'lucide-react';

@@ -4,10 +4,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useTheme } from '@/hooks/useTheme';
-import { useSyncInit } from '@/hooks/useSyncEngine';
+import { useSyncInit } from '@/hooks/useSyncEngineV4';
 import { FUNCOES } from '@/lib/constants';
 import { getTablesForRole, getFilter } from '@/lib/syncByRole';
-import { destroySync } from '@/lib/sync-engine';
+import { destroySync } from '@/lib/sync-engine-v4';
 import SyncIndicator from './SyncIndicator';
 import { 
   LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog,

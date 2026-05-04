@@ -3,7 +3,7 @@ import { useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { smartSyncVendas, fillMissingRazaoSocial } from '@/lib/smartSync';
 import { useAuth } from '@/hooks/useAuth';
-import { useSyncTable } from '@/hooks/useSyncEngine';
+import { useSyncTable } from '@/hooks/useSyncEngineV4';
 import { Upload, Users, ShoppingCart, FileSpreadsheet, Check, X, Loader2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 

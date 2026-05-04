@@ -8,9 +8,9 @@
  * Posicionamento recomendado: header/sidebar, ao lado do indicador Online/Offline
  */
 
-import { useSyncStatus } from '@/hooks/useSyncEngine';
+import { useSyncStatus } from '@/hooks/useSyncEngineV4';
 import { Cloud, CloudOff, Loader2, AlertCircle, Check } from 'lucide-react';
-import { forceProcess } from '@/lib/sync-engine';
+import { forceProcess } from '@/lib/sync-engine-v4';
 
 export default function SyncIndicator({ compact = false }) {
   const { status, pendingCount } = useSyncStatus();
