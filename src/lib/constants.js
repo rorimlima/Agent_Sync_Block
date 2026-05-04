@@ -30,6 +30,7 @@ export const PERMISSION_MAP = {
   ],
   agente: [
     '/dashboard/bloqueados',
+    '/dashboard/agente',
   ],
 };
 

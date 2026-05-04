@@ -58,20 +58,46 @@ let supabase = null;
 let _isInitialized = false; // True after first successful INIT completes
 
 /**
+ * The current access token from the Main Thread.
+ * 
+ * Updated on INIT (from the auth session) and on TOKEN_REFRESH events.
+ * Used by the `accessToken` callback in the Supabase client constructor
+ * to authenticate every REST/Realtime request.
+ */
+let _currentAccessToken = null;
+
+/**
  * Initialize Supabase client inside the Worker.
  * CRITICAL: Must also receive auth tokens to bypass RLS.
  * 
+ * AUTH STRATEGY:
+ * Instead of using supabase.auth.setSession() (which requires a storage
+ * backend, session validation, and can fail with "Auth session missing!"),
+ * we use the `accessToken` constructor option — a callback function that
+ * supabase-js calls on EVERY request to get the current JWT.
+ * 
+ * This is the official pattern for environments without localStorage
+ * (Web Workers, Edge Functions, Service Workers, etc.).
+ * 
  * SAFE TO CALL MULTIPLE TIMES:
- * - Creates the client only once
- * - Always re-injects the client into all modules (fixes React StrictMode double-render)
- * - Always updates auth tokens
+ * - Creates the client only once (token updates via the closure)
+ * - Always re-injects the client into all modules (fixes StrictMode)
  */
 async function initSupabase(config) {
+  // Update the token variable (closure captured by accessToken callback)
+  if (config.accessToken) {
+    _currentAccessToken = config.accessToken;
+  }
+
   // Create the client only once
   if (!supabase) {
     supabase = createClient(config.url, config.anonKey, {
+      // ── accessToken callback — the KEY to Worker auth ──
+      // supabase-js calls this on every REST/Realtime request.
+      // Returns the user's JWT if available, null otherwise (falls back to anonKey).
+      accessToken: async () => _currentAccessToken || null,
       auth: {
-        persistSession: false,       // Worker has no localStorage
+        persistSession: false,       // No storage needed
         autoRefreshToken: false,     // Main Thread manages refresh
         detectSessionInUrl: false,   // Worker has no URL
       },
@@ -82,6 +108,8 @@ async function initSupabase(config) {
         headers: { 'x-client-info': 'agent-sync-block-worker' },
       },
     });
+
+    console.log('[Worker] Supabase client created with accessToken callback');
   }
 
   // ── ALWAYS inject the client into all modules ──
@@ -92,45 +120,23 @@ async function initSupabase(config) {
   setMutationSupabase(supabase);
   setRealtimeSupabase(supabase);
 
-  // ── ALWAYS update auth session ──
-  if (config.accessToken && config.refreshToken) {
-    try {
-      const { error } = await supabase.auth.setSession({
-        access_token: config.accessToken,
-        refresh_token: config.refreshToken,
-      });
-      if (error) {
-        console.error('[Worker] Failed to set auth session:', error.message);
-      } else {
-        console.log('[Worker] Auth session set successfully');
-      }
-    } catch (err) {
-      console.error('[Worker] Auth session error:', err.message);
-    }
+  if (_currentAccessToken) {
+    console.log('[Worker] Auth token set via accessToken callback');
   } else {
-    console.warn('[Worker] No auth tokens provided — queries will be anonymous (RLS may block data)');
+    console.warn('[Worker] No auth tokens provided — queries will use anon key (RLS may block data)');
   }
 }
 
 /**
- * Refresh the auth session inside the Worker.
+ * Refresh the auth token inside the Worker.
  * Called when the Main Thread detects a token refresh.
+ * 
+ * Simply updates the variable — the next request from supabase-js
+ * will call the accessToken callback and get the new token.
  */
-async function refreshAuth(accessToken, refreshToken) {
-  if (!supabase) return;
-  try {
-    const { error } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-    if (error) {
-      console.error('[Worker] Token refresh failed:', error.message);
-    } else {
-      console.log('[Worker] Auth token refreshed');
-    }
-  } catch (err) {
-    console.error('[Worker] Token refresh error:', err.message);
-  }
+function refreshAuth(accessToken, _refreshToken) {
+  _currentAccessToken = accessToken;
+  console.log('[Worker] Auth token refreshed via callback');
 }
 
 // ─── Callbacks to Main Thread ───────────────────────────────────────────────────
