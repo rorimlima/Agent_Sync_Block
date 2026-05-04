@@ -11,6 +11,7 @@
 
 export {
   initSync,
+  refreshWorkerAuth,
   subscribeTable,
   subscribeStatus,
   subscribeProgress,

@@ -11,6 +11,7 @@
  * 3. Manages pub/sub subscriptions for table data and sync status
  * 4. Handles Worker crashes with auto-restart
  * 5. Forwards online/offline/visibility events to the Worker
+ * 6. Passes auth tokens to the Worker for RLS-compatible queries
  * 
  * ZERO heavy logic runs here. All data processing is in the Worker.
  */
@@ -19,6 +20,7 @@
 
 let _worker = null;
 let _isReady = false;
+let _isInitDone = false;      // True after the first INIT_READY is received
 let _requestId = 0;
 const _pendingRequests = {};         // requestId → { resolve, reject, timer }
 const _tableSubscribers = {};        // table → Set<callback>
@@ -42,7 +44,7 @@ function getWorker() {
   });
 
   // Create the Web Worker
-  // Next.js requires workers to be imported via new Worker(new URL(...), { type: 'module' })
+  // Next.js/Turbopack supports `new Worker(new URL(...), { type: 'module' })` natively
   _worker = new Worker(
     new URL('./sync.worker.js', import.meta.url),
     { type: 'module' }
@@ -98,7 +100,6 @@ function getWorker() {
       case 'DELTA_RESULT':
       case 'HARD_SYNC_RESULT':
       case 'GET_ALL_RESULT':
-      case 'INIT_READY':
       case 'RESET_DONE':
       case 'DESTROYED': {
         const pending = _pendingRequests[msg.requestId];
@@ -107,16 +108,17 @@ function getWorker() {
           delete _pendingRequests[msg.requestId];
           pending.resolve(msg);
         }
-        // Also handle INIT_READY specially
-        if (msg.type === 'INIT_READY') {
-          // Resolve all pending init requests
-          for (const [id, p] of Object.entries(_pendingRequests)) {
-            if (p._isInit) {
-              clearTimeout(p.timer);
-              delete _pendingRequests[id];
-              p.resolve(msg);
-            }
-          }
+        break;
+      }
+
+      // INIT_READY — Special case: resolve pending AND mark init as done
+      case 'INIT_READY': {
+        _isInitDone = true;
+        const pending = _pendingRequests[msg.requestId];
+        if (pending) {
+          clearTimeout(pending.timer);
+          delete _pendingRequests[msg.requestId];
+          pending.resolve(msg);
         }
         break;
       }
@@ -140,6 +142,7 @@ function getWorker() {
   _worker.onerror = (err) => {
     console.error('[SyncBridge] Worker crashed:', err.message);
     _isReady = false;
+    _isInitDone = false;
     // Reject all pending requests
     for (const [id, p] of Object.entries(_pendingRequests)) {
       clearTimeout(p.timer);
@@ -194,7 +197,7 @@ function sendRequest(msg, timeoutMs = 30000) {
       reject(new Error(`Worker request timeout: ${msg.type}`));
     }, timeoutMs);
 
-    _pendingRequests[id] = { resolve, reject, timer, _isInit: msg.type === 'INIT' };
+    _pendingRequests[id] = { resolve, reject, timer };
 
     worker.postMessage({ ...msg, requestId: id });
   });
@@ -214,11 +217,15 @@ function sendFire(msg) {
  * Initialize the Sync Engine.
  * Creates the Worker, connects to Supabase, syncs all tables.
  * 
+ * CRITICAL: authSession must contain access_token and refresh_token
+ * so the Worker's Supabase client can authenticate and bypass RLS.
+ * 
  * @param {string[]} tables - Tables to sync
  * @param {Object} [tableFilters] - Filters per table
+ * @param {Object} [authSession] - Supabase auth session { access_token, refresh_token }
  * @returns {Promise<Object>} Init results
  */
-export async function initSync(tables, tableFilters = {}) {
+export async function initSync(tables, tableFilters = {}, authSession = null) {
   await waitForReady();
 
   return sendRequest({
@@ -228,13 +235,28 @@ export async function initSync(tables, tableFilters = {}) {
     supabaseConfig: {
       url: process.env.NEXT_PUBLIC_SUPABASE_URL,
       anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      accessToken: authSession?.access_token || null,
+      refreshToken: authSession?.refresh_token || null,
     },
   }, 60000); // 60s timeout for initial sync
 }
 
 /**
+ * Send refreshed auth tokens to the Worker.
+ * Call this whenever the Main Thread's Supabase session refreshes.
+ */
+export function refreshWorkerAuth(accessToken, refreshToken) {
+  sendFire({ type: 'TOKEN_REFRESH', accessToken, refreshToken });
+}
+
+/**
  * Subscribe to table data changes.
  * The callback receives the full array of records (excluding soft-deletes).
+ * 
+ * SAFE TO CALL BEFORE INIT:
+ * - The SUBSCRIBE message is sent to the Worker immediately
+ * - The Worker will wait for INIT to complete before reading data
+ * - Once INIT completes, the Worker will send TABLE_DATA with the full dataset
  * 
  * @param {string} table - Table name
  * @param {Function} callback - (data: Array) => void
@@ -247,6 +269,7 @@ export function subscribeTable(table, callback) {
   _tableSubscribers[table].add(callback);
 
   // Request current data from the Worker
+  // The Worker will wait for INIT if needed
   sendFire({ type: 'SUBSCRIBE', table });
 
   return () => {
@@ -279,12 +302,6 @@ export function subscribeProgress(callback) {
 /**
  * Optimistic mutation — the main write API.
  * Returns instantly with the optimistic local record.
- * 
- * @param {string} table
- * @param {'INSERT'|'UPDATE'|'DELETE'} operation
- * @param {Object} record
- * @param {Object} [options]
- * @returns {Promise<Object>} The local record
  */
 export async function mutate(table, operation, record, options = {}) {
   const result = await sendRequest({
@@ -345,6 +362,7 @@ export function destroySync() {
   }
   _statusSubscribers.clear();
   _progressSubscribers.clear();
+  _isInitDone = false;
 }
 
 /**
@@ -356,5 +374,6 @@ export function terminateWorker() {
     _worker.terminate();
     _worker = null;
     _isReady = false;
+    _isInitDone = false;
   }
 }

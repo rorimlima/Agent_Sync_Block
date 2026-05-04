@@ -74,11 +74,11 @@ export function getDB() {
  */
 export async function getAll(table, { includeDeleted = false } = {}) {
   const d = getDB();
-  if (includeDeleted) {
-    return d.table(table).toArray();
-  }
-  // Use index for faster filtering
-  return d.table(table).where('is_deleted').notEqual(true).toArray();
+  const all = await d.table(table).toArray();
+  if (includeDeleted) return all;
+  // Filter in JS — more reliable than Dexie's where().notEqual() for booleans
+  // Dexie can silently drop records where is_deleted is undefined/null
+  return all.filter(r => !r.is_deleted);
 }
 
 /**
@@ -128,8 +128,7 @@ export async function purgeDeletedOlderThan(table, days = 7) {
   const d = getDB();
 
   const toDelete = await d.table(table)
-    .where('is_deleted').equals(1) // Dexie treats true as 1
-    .filter(r => r.updated_at < cutoffISO)
+    .filter(r => r.is_deleted === true && r.updated_at < cutoffISO)
     .primaryKeys();
 
   if (toDelete.length > 0) {

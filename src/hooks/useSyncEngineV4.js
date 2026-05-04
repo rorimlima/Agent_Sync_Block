@@ -21,10 +21,12 @@ import {
   subscribeProgress,
   mutate as syncMutate,
   initSync,
+  refreshWorkerAuth,
   forceDeltaSync,
   destroySync,
   getAll,
 } from '@/lib/sync-engine-v4';
+import { supabase } from '@/lib/supabase';
 
 // ─── useSyncTable ───────────────────────────────────────────────────────────────
 /**
@@ -189,6 +191,11 @@ export function useSyncProgress() {
  * Hook that initializes the Sync Engine v4 (Web Worker) for a set of tables.
  * Must be called ONCE in the layout/provider, after authentication.
  * 
+ * CRITICAL: This hook:
+ * 1. Gets the Supabase auth session from the Main Thread
+ * 2. Passes access_token + refresh_token to the Worker
+ * 3. Listens for token refresh events and forwards them to the Worker
+ * 
  * @param {string[]} tables - Tables to synchronize
  * @param {Object} [tableFilters] - Filters per table for initial load
  * @param {boolean} [enabled] - If false, don't initialize (wait for auth)
@@ -201,16 +208,42 @@ export function useSyncInit(tables, tableFilters = {}, enabled = true) {
     if (!enabled || initRef.current || tables.length === 0) return;
     initRef.current = true;
 
-    initSync(tables, tableFilters)
-      .then(() => setIsReady(true))
-      .catch(err => {
-        console.error('[useSyncInit] Init failed:', err);
-        setIsReady(true); // Mark ready even on error (cached data will be used)
-      });
+    const doInit = async () => {
+      // ── Get the auth session from the Main Thread's Supabase client ──
+      // This is the CRITICAL step that was missing before.
+      // Without it, the Worker makes anonymous requests and RLS blocks all data.
+      let session = null;
+      try {
+        const { data } = await supabase.auth.getSession();
+        session = data?.session || null;
+        if (!session) {
+          console.warn('[useSyncInit] No auth session found — data may be restricted by RLS');
+        }
+      } catch (err) {
+        console.error('[useSyncInit] Failed to get auth session:', err);
+      }
+
+      // ── Initialize the Worker with tables + auth tokens ──
+      await initSync(tables, tableFilters, session);
+      setIsReady(true);
+    };
+
+    doInit().catch(err => {
+      console.error('[useSyncInit] Init failed:', err);
+      setIsReady(true); // Mark ready even on error (cached data will be used)
+    });
+
+    // ── Listen for token refresh and forward to Worker ──
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED' && session) {
+        refreshWorkerAuth(session.access_token, session.refresh_token);
+      }
+    });
 
     return () => {
       destroySync();
       initRef.current = false;
+      authListener?.subscription?.unsubscribe();
     };
   }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 

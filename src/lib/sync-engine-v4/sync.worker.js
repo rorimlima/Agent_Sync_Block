@@ -55,27 +55,82 @@ import {
 // ─── Supabase Client (created inside the Worker) ────────────────────────────────
 
 let supabase = null;
+let _isInitialized = false; // True after first successful INIT completes
 
-function initSupabase(config) {
-  if (supabase) return;
+/**
+ * Initialize Supabase client inside the Worker.
+ * CRITICAL: Must also receive auth tokens to bypass RLS.
+ * 
+ * SAFE TO CALL MULTIPLE TIMES:
+ * - Creates the client only once
+ * - Always re-injects the client into all modules (fixes React StrictMode double-render)
+ * - Always updates auth tokens
+ */
+async function initSupabase(config) {
+  // Create the client only once
+  if (!supabase) {
+    supabase = createClient(config.url, config.anonKey, {
+      auth: {
+        persistSession: false,       // Worker has no localStorage
+        autoRefreshToken: false,     // Main Thread manages refresh
+        detectSessionInUrl: false,   // Worker has no URL
+      },
+      realtime: {
+        params: { eventsPerSecond: 5 },
+      },
+      global: {
+        headers: { 'x-client-info': 'agent-sync-block-worker' },
+      },
+    });
+  }
 
-  supabase = createClient(config.url, config.anonKey, {
-    auth: {
-      persistSession: false, // Worker doesn't need session persistence
-      autoRefreshToken: false,
-    },
-    realtime: {
-      params: { eventsPerSecond: 5 },
-    },
-    global: {
-      headers: { 'x-client-info': 'agent-sync-block-worker' },
-    },
-  });
-
-  // Inject Supabase client into all modules
+  // ── ALWAYS inject the client into all modules ──
+  // This is critical for React StrictMode (double-render) where the first
+  // INIT creates the client but the cleanup destroys the modules' references,
+  // then the second INIT skipped injection because of `if (supabase) return`.
   setDeltaSupabase(supabase);
   setMutationSupabase(supabase);
   setRealtimeSupabase(supabase);
+
+  // ── ALWAYS update auth session ──
+  if (config.accessToken && config.refreshToken) {
+    try {
+      const { error } = await supabase.auth.setSession({
+        access_token: config.accessToken,
+        refresh_token: config.refreshToken,
+      });
+      if (error) {
+        console.error('[Worker] Failed to set auth session:', error.message);
+      } else {
+        console.log('[Worker] Auth session set successfully');
+      }
+    } catch (err) {
+      console.error('[Worker] Auth session error:', err.message);
+    }
+  } else {
+    console.warn('[Worker] No auth tokens provided — queries will be anonymous (RLS may block data)');
+  }
+}
+
+/**
+ * Refresh the auth session inside the Worker.
+ * Called when the Main Thread detects a token refresh.
+ */
+async function refreshAuth(accessToken, refreshToken) {
+  if (!supabase) return;
+  try {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) {
+      console.error('[Worker] Token refresh failed:', error.message);
+    } else {
+      console.log('[Worker] Auth token refreshed');
+    }
+  } catch (err) {
+    console.error('[Worker] Token refresh error:', err.message);
+  }
 }
 
 // ─── Callbacks to Main Thread ───────────────────────────────────────────────────
@@ -114,6 +169,10 @@ setAutoHealCallback(async ({ table, action, error }) => {
 let _activeTables = [];
 let _tableFilters = {};
 
+// ─── INIT lock to prevent concurrent INIT processing ────────────────────────────
+
+let _initPromise = null;
+
 // ─── Message Router ─────────────────────────────────────────────────────────────
 
 self.onmessage = async (event) => {
@@ -127,56 +186,91 @@ self.onmessage = async (event) => {
       // INIT — Initialize the Sync Engine with tables and Supabase config
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       case 'INIT': {
-        const { tables, filters = {}, supabaseConfig } = msg;
+        const { tables, filters = {}, supabaseConfig, requestId } = msg;
 
-        // Initialize Supabase client inside Worker
-        initSupabase(supabaseConfig);
+        // If an INIT is already running, wait for it to finish first
+        if (_initPromise) {
+          console.log('[Worker] INIT already running — waiting for completion...');
+          try { await _initPromise; } catch {}
+        }
 
-        _activeTables = tables;
-        _tableFilters = filters;
+        // Wrap the init in a trackable promise
+        _initPromise = (async () => {
+          // Initialize Supabase client inside Worker (includes auth session)
+          await initSupabase(supabaseConfig);
 
-        // Sync all tables in parallel
-        const results = await Promise.allSettled(
-          tables.map(async (table) => {
-            try {
-              const result = await syncTable(table, {
-                filter: filters[table],
-                onProgress: (progress) => {
-                  postToMain({ type: 'SYNC_PROGRESS', ...progress });
-                },
-              });
+          _activeTables = tables;
+          _tableFilters = filters;
 
-              // Subscribe to Realtime
-              realtimeSubscribe(table);
-
-              // Send initial data to Main Thread
-              await notifyTableNow(table);
-
-              return { table, ...result };
-            } catch (err) {
-              console.error(`[Worker] Init sync failed for "${table}":`, err);
-
-              // Even on error, send whatever is in cache
+          // Sync all tables in parallel
+          const results = await Promise.allSettled(
+            tables.map(async (table) => {
               try {
+                const result = await syncTable(table, {
+                  filter: filters[table],
+                  onProgress: (progress) => {
+                    postToMain({ type: 'SYNC_PROGRESS', ...progress });
+                  },
+                });
+
+                // Subscribe to Realtime
+                realtimeSubscribe(table);
+
+                // Send initial data to Main Thread
                 await notifyTableNow(table);
-              } catch {}
 
-              return { table, source: 'cache', count: 0, error: err.message };
-            }
-          })
-        );
+                return { table, ...result };
+              } catch (err) {
+                console.error(`[Worker] Init sync failed for "${table}":`, err);
 
-        // Schedule garbage collection in 30s (non-blocking)
-        setTimeout(async () => {
-          try {
-            await runGarbageCollection(tables);
-          } catch {}
-        }, 30000);
+                // Even on error, send whatever is in cache
+                try {
+                  await notifyTableNow(table);
+                } catch {}
 
-        postToMain({
-          type: 'INIT_READY',
-          results: results.map(r => r.value || r.reason),
-        });
+                return { table, source: 'cache', count: 0, error: err.message };
+              }
+            })
+          );
+
+          _isInitialized = true;
+
+          // Schedule garbage collection in 30s (non-blocking)
+          setTimeout(async () => {
+            try {
+              await runGarbageCollection(tables);
+            } catch {}
+          }, 30000);
+
+          return results.map(r => r.value || r.reason);
+        })();
+
+        try {
+          const results = await _initPromise;
+          postToMain({
+            type: 'INIT_READY',
+            requestId,
+            results,
+          });
+        } catch (initErr) {
+          console.error('[Worker] INIT failed:', initErr);
+          postToMain({
+            type: 'ERROR',
+            message: `INIT failed: ${initErr.message}`,
+            requestId,
+          });
+        } finally {
+          _initPromise = null;
+        }
+        break;
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // TOKEN_REFRESH — Main Thread sends new auth tokens
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      case 'TOKEN_REFRESH': {
+        const { accessToken, refreshToken } = msg;
+        await refreshAuth(accessToken, refreshToken);
         break;
       }
 
@@ -185,6 +279,11 @@ self.onmessage = async (event) => {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       case 'MUTATE': {
         const { table, operation, record, options = {}, requestId } = msg;
+
+        // Wait for INIT to complete if it's still running
+        if (_initPromise) {
+          try { await _initPromise; } catch {}
+        }
 
         const localRecord = await mutate(table, operation, record, options);
 
@@ -214,6 +313,11 @@ self.onmessage = async (event) => {
       case 'FORCE_DELTA': {
         const { table, requestId } = msg;
 
+        // Wait for INIT to complete if it's still running
+        if (_initPromise) {
+          try { await _initPromise; } catch {}
+        }
+
         const result = await forceDeltaSync(table, {
           filter: _tableFilters[table],
         });
@@ -233,6 +337,11 @@ self.onmessage = async (event) => {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       case 'HARD_SYNC': {
         const { table, requestId } = msg;
+
+        // Wait for INIT to complete if it's still running
+        if (_initPromise) {
+          try { await _initPromise; } catch {}
+        }
 
         const result = await forceHardSync(table, {
           filter: _tableFilters[table],
@@ -263,6 +372,10 @@ self.onmessage = async (event) => {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       case 'SUBSCRIBE': {
         const { table } = msg;
+        // If INIT hasn't completed yet, wait for it before sending data
+        if (_initPromise) {
+          try { await _initPromise; } catch {}
+        }
         await notifyTableNow(table);
         break;
       }
@@ -294,6 +407,8 @@ self.onmessage = async (event) => {
       // VISIBILITY_CHANGE — Tab became visible (refetch stale data)
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       case 'VISIBILITY_VISIBLE': {
+        // Only delta-sync if we've completed initial INIT
+        if (!_isInitialized) break;
         // Run delta sync on all active tables when tab regains focus
         for (const table of _activeTables) {
           try {
@@ -316,8 +431,10 @@ self.onmessage = async (event) => {
       // RESET_DATABASE — Full reset (logout)
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       case 'RESET_DATABASE': {
+        const { requestId } = msg;
         await resetDatabase();
-        postToMain({ type: 'RESET_DONE' });
+        _isInitialized = false;
+        postToMain({ type: 'RESET_DONE', requestId });
         break;
       }
 
@@ -329,6 +446,7 @@ self.onmessage = async (event) => {
         destroyMutationQueue();
         _activeTables = [];
         _tableFilters = {};
+        _isInitialized = false;
         postToMain({ type: 'DESTROYED' });
         break;
       }
