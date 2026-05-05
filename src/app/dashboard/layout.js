@@ -23,7 +23,7 @@ export default function DashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [online, setOnline] = useState(true);
+  const [online, setOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   // ── Sync Engine Init — sincroniza as tabelas do role do usuário ─────────
   const syncTables = colaborador?.funcao ? getTablesForRole(colaborador.funcao) : [];
@@ -86,7 +86,6 @@ export default function DashboardLayout({ children }) {
     const handleOffline = () => setOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    setOnline(navigator.onLine);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
