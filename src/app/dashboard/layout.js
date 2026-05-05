@@ -197,21 +197,6 @@ export default function DashboardLayout({ children }) {
       {/* Mobile Header */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-surface border-b border-border flex items-center justify-between px-4 z-40">
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              // 1. Limpa toda a pilha de navegação para impedir o botão "voltar"
-              const historyLen = window.history.length;
-              if (historyLen > 1) window.history.go(-(historyLen - 1));
-              // 2. Tenta fechar a janela (funciona em PWA standalone)
-              setTimeout(() => { window.close(); }, 100);
-              // 3. Fallback: substitui o entry atual — sem volta possível
-              setTimeout(() => { window.location.replace('about:blank'); }, 400);
-            }}
-            className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-600 hover:bg-red-700 active:scale-90 transition-all cursor-pointer"
-            aria-label="Fechar aplicativo"
-          >
-            <X className="w-4 h-4 text-white" strokeWidth={3} />
-          </button>
           <Lock className="w-5 h-5 text-primary" />
           <span className="text-sm font-bold text-text">SyncBlock</span>
         </div>
