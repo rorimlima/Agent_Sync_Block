@@ -11,7 +11,7 @@ import { destroySync } from '@/lib/sync-engine-v4';
 import SyncIndicator from './SyncIndicator';
 import { 
   LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog,
-  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown, KeyRound, Eye, EyeOff, CheckCircle2, ClipboardList, ShieldAlert, Power
+  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown, KeyRound, Eye, EyeOff, CheckCircle2, ClipboardList, ShieldAlert
 } from 'lucide-react';
 
 const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog, Crown, ClipboardList, ShieldAlert };
@@ -197,6 +197,21 @@ export default function DashboardLayout({ children }) {
       {/* Mobile Header */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-surface border-b border-border flex items-center justify-between px-4 z-40">
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              // 1. Limpa toda a pilha de navegação para impedir o botão "voltar"
+              const historyLen = window.history.length;
+              if (historyLen > 1) window.history.go(-(historyLen - 1));
+              // 2. Tenta fechar a janela (funciona em PWA standalone)
+              setTimeout(() => { window.close(); }, 100);
+              // 3. Fallback: substitui o entry atual — sem volta possível
+              setTimeout(() => { window.location.replace('about:blank'); }, 400);
+            }}
+            className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-600 hover:bg-red-700 active:scale-90 transition-all cursor-pointer"
+            aria-label="Fechar aplicativo"
+          >
+            <X className="w-4 h-4 text-white" strokeWidth={3} />
+          </button>
           <Lock className="w-5 h-5 text-primary" />
           <span className="text-sm font-bold text-text">SyncBlock</span>
         </div>
@@ -261,20 +276,6 @@ export default function DashboardLayout({ children }) {
               >
                 <LogOut className="w-5 h-5" />
                 Sair
-              </button>
-              <button
-                onClick={() => {
-                  // Fechar o app PWA / janela do navegador
-                  if (window.close) window.close();
-                  // Fallback para contextos onde window.close() é bloqueado
-                  setTimeout(() => {
-                    window.location.href = 'about:blank';
-                  }, 300);
-                }}
-                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold text-red-400 hover:text-white hover:bg-red-600 bg-red-500/10 border border-red-500/20 transition-all cursor-pointer"
-              >
-                <Power className="w-5 h-5" />
-                Fechar Aplicativo
               </button>
             </div>
           </aside>
