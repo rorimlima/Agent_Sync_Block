@@ -22,11 +22,13 @@ export const PERMISSION_MAP = {
     '/dashboard/importar',
     '/dashboard/vendas',
     '/dashboard/clientes',
+    '/dashboard/bloqueados',
     '/dashboard/logs',
   ],
   documentacao: [
     '/dashboard',
     '/dashboard/vendas',
+    '/dashboard/bloqueados',
   ],
   agente: [
     '/dashboard/bloqueados',

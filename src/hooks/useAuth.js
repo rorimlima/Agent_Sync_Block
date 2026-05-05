@@ -202,6 +202,9 @@ export function AuthProvider({ children }) {
       throw error;
     }
 
+    // Force refresh do JWT para garantir token atualizado
+    await supabase.auth.refreshSession();
+
     // Fetch colaborador profile
     const colab = await fetchColaborador(data.user);
 

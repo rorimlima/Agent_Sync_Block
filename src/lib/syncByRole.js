@@ -6,8 +6,8 @@
 // Tabelas que cada role precisa sincronizar para offline
 export const ROLE_TABLES = {
   master: ['clientes', 'vendas', 'veiculos_bloqueados', 'audit_logs'],
-  financeiro: ['clientes', 'vendas'],
-  documentacao: ['vendas'],
+  financeiro: ['clientes', 'vendas', 'veiculos_bloqueados'],
+  documentacao: ['vendas', 'veiculos_bloqueados'],
   agente: ['veiculos_bloqueados'],
 };
 
