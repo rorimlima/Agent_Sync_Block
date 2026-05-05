@@ -18,8 +18,29 @@ export function useOnline() {
     window.addEventListener('offline', off);
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(() => setSwReady(true))
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(registration => {
+          setSwReady(true);
+
+          // Check for SW updates periodically
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            if (newWorker) {
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'activated') {
+                  console.log('[SW] New version activated');
+                }
+              });
+            }
+          });
+
+          // Register for periodic background sync if supported
+          if ('periodicSync' in registration) {
+            registration.periodicSync.register('sync-data', {
+              minInterval: 60 * 60 * 1000, // 1 hour
+            }).catch(() => {/* Permission may not be granted */});
+          }
+        })
         .catch(err => console.warn('SW register failed:', err));
     }
 
