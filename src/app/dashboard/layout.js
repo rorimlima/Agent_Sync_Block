@@ -11,7 +11,7 @@ import { destroySync } from '@/lib/sync-engine-v4';
 import SyncIndicator from './SyncIndicator';
 import { 
   LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog,
-  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown, KeyRound, Eye, EyeOff, CheckCircle2, ClipboardList, ShieldAlert
+  LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown, KeyRound, Eye, EyeOff, CheckCircle2, ClipboardList, ShieldAlert, Power
 } from 'lucide-react';
 
 const ICON_MAP = { LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog, Crown, ClipboardList, ShieldAlert };
@@ -248,10 +248,10 @@ export default function DashboardLayout({ children }) {
                 );
               })}
             </nav>
-            <div className="p-3 border-t border-border">
+            <div className="p-3 border-t border-border space-y-1">
               <button
                 onClick={openChangePwd}
-                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-text-muted hover:text-primary hover:bg-primary/5 transition-all cursor-pointer mb-1"
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-text-muted hover:text-primary hover:bg-primary/5 transition-all cursor-pointer"
               >
                 <KeyRound className="w-5 h-5" />
                 Mudar Senha
@@ -262,6 +262,20 @@ export default function DashboardLayout({ children }) {
               >
                 <LogOut className="w-5 h-5" />
                 Sair
+              </button>
+              <button
+                onClick={() => {
+                  // Fechar o app PWA / janela do navegador
+                  if (window.close) window.close();
+                  // Fallback para contextos onde window.close() é bloqueado
+                  setTimeout(() => {
+                    window.location.href = 'about:blank';
+                  }, 300);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold text-red-400 hover:text-white hover:bg-red-600 bg-red-500/10 border border-red-500/20 transition-all cursor-pointer"
+              >
+                <Power className="w-5 h-5" />
+                Fechar Aplicativo
               </button>
             </div>
           </aside>
