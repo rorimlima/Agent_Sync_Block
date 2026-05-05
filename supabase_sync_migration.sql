@@ -78,16 +78,6 @@ CREATE TRIGGER update_audit_logs_updated_at
 BEFORE UPDATE ON audit_logs
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- ── ocorrencias_agente ──────────────────────────────────────────────────────
-ALTER TABLE ocorrencias_agente ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
-ALTER TABLE ocorrencias_agente ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
-
-CREATE INDEX IF NOT EXISTS idx_ocorrencias_agente_updated_at ON ocorrencias_agente (updated_at);
-
-DROP TRIGGER IF EXISTS update_ocorrencias_agente_updated_at ON ocorrencias_agente;
-CREATE TRIGGER update_ocorrencias_agente_updated_at
-BEFORE UPDATE ON ocorrencias_agente
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ── colaboradores ───────────────────────────────────────────────────────────
 ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
@@ -112,7 +102,7 @@ DECLARE
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'vendas', 'veiculos_bloqueados', 'clientes', 'audit_logs', 
-    'ocorrencias_agente', 'colaboradores'
+    'colaboradores'
   ])
   LOOP
     BEGIN

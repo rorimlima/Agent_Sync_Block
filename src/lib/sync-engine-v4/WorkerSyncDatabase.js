@@ -28,7 +28,7 @@ const SCHEMA = {
   vendas:              '&id, updated_at, is_deleted, cod_cliente, placa',
   veiculos_bloqueados: '&id, updated_at, is_deleted, placa, status_final',
   audit_logs:          '&id, updated_at, is_deleted, created_at',
-  ocorrencias_agente:  '&id, updated_at, is_deleted',
+
   colaboradores:       '&id, updated_at, is_deleted, auth_user_id',
 
   // ── Internal Stores ──
@@ -39,7 +39,7 @@ const SCHEMA = {
 // List of data tables (excludes internal stores)
 export const DATA_TABLES = [
   'clientes', 'vendas', 'veiculos_bloqueados',
-  'audit_logs', 'ocorrencias_agente', 'colaboradores',
+  'audit_logs', 'colaboradores',
 ];
 
 // ─── Singleton DB Instance ──────────────────────────────────────────────────────

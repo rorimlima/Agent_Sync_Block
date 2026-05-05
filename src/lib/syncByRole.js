@@ -8,7 +8,7 @@ export const ROLE_TABLES = {
   master: ['clientes', 'vendas', 'veiculos_bloqueados', 'audit_logs'],
   financeiro: ['clientes', 'vendas'],
   documentacao: ['vendas'],
-  agente: ['veiculos_bloqueados', 'ocorrencias_agente'],
+  agente: ['veiculos_bloqueados'],
 };
 
 // TTL em ms por tabela (quanto tempo o cache é considerado fresco)
@@ -17,7 +17,7 @@ export const TABLE_TTL = {
   vendas: 5 * 60 * 1000,            // 5 min
   veiculos_bloqueados: 2 * 60 * 1000, // 2 min — agentes precisam dados frescos
   audit_logs: 5 * 60 * 1000,        // 5 min — só para dashboard
-  ocorrencias_agente: 2 * 60 * 1000, // 2 min
+
 };
 
 // Colunas mínimas para cada tabela (evitar baixar tudo)
@@ -27,7 +27,7 @@ export const TABLE_SELECT = {
   vendas: 'id,cod_cliente,razao_social,placa,chassi,marca_modelo,valor_venda_cents,data_venda,bloqueio_financeiro,bloqueio_documentacao,status,vendedor,updated_at,is_deleted',
   veiculos_bloqueados: 'id,venda_id,placa,final_placa,marca_modelo,cod_cliente,razao_social,status_financeiro,status_documentacao,status_final,bloqueado_em,chassi,updated_at,is_deleted',
   audit_logs: 'id,acao,setor,detalhes,user_email,created_at,updated_at,is_deleted',
-  ocorrencias_agente: '*',
+
 };
 
 // Filtros por role (ex: agente só vê bloqueados)

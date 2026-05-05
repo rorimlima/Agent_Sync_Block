@@ -43,7 +43,6 @@ const TABLE_SELECT = {
   vendas: 'id,cod_cliente,razao_social,placa,chassi,marca_modelo,valor_venda_cents,data_venda,bloqueio_financeiro,bloqueio_documentacao,status,vendedor,updated_at,is_deleted',
   veiculos_bloqueados: 'id,venda_id,placa,final_placa,marca_modelo,cod_cliente,razao_social,status_financeiro,status_documentacao,status_final,bloqueado_em,chassi,updated_at,is_deleted',
   audit_logs: 'id,acao,setor,detalhes,user_email,created_at,updated_at,is_deleted',
-  ocorrencias_agente: '*',
   colaboradores: '*',
 };
 

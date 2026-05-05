@@ -19,7 +19,6 @@ const TABLE_SCHEMAS = {
   vendas: ['id', 'updated_at', 'is_deleted', 'cod_cliente', 'placa'],
   veiculos_bloqueados: ['id', 'updated_at', 'is_deleted', 'placa', 'status_final'],
   audit_logs: ['id', 'updated_at', 'is_deleted', 'created_at'],
-  ocorrencias_agente: ['id', 'updated_at', 'is_deleted'],
   colaboradores: ['id', 'updated_at', 'is_deleted', 'auth_user_id'],
 };
 
