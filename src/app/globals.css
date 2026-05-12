@@ -114,3 +114,236 @@
 [data-theme="light"] .badge-normal { background: rgba(16, 185, 129, 0.1); color: #059669; }
 [data-theme="light"] .badge-bloqueado { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
 [data-theme="light"] .badge-liberado { background: rgba(16, 185, 129, 0.1); color: #059669; }
+
+/* ══════════════════════════════════════════════════════════
+   MOBILE FIX — responsive corrections for 375–640 px
+   Rules only activate inside @media — desktop untouched.
+   ══════════════════════════════════════════════════════════ */
+
+/* MOBILE FIX — global safety net */
+@media (max-width: 640px) {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  /* Prevent any element from creating horizontal overflow */
+  body {
+    overflow-x: hidden;
+  }
+
+  img,
+  svg,
+  video {
+    max-width: 100%;
+  }
+
+  /* MOBILE FIX — all text can break safely */
+  p, span, h1, h2, h3, h4, label, td, th {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+}
+
+/* ─── Dashboard layout ──────────────────────────────────── */
+
+/* MOBILE FIX — main content extra bottom padding for bottom nav */
+@media (max-width: 767px) {
+  main > div {
+    padding-bottom: 5rem; /* ensures content isn't hidden under 64px bottom nav */
+  }
+}
+
+/* ─── Page headers: title + action buttons ─────────────── */
+
+/* MOBILE FIX — wrap page headers so export buttons don't overflow */
+@media (max-width: 640px) {
+  /* Generic pattern: first div inside space-y-4 / space-y-6 that has
+     flex + justify-between — allow wrapping and add gap */
+  .space-y-4 > div:first-child,
+  .space-y-6 > div:first-child {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* MOBILE FIX — export button group: stack or shrink */
+  /* Targets the flex gap-2 div that holds export buttons */
+  .space-y-4 > div:first-child > div.flex.gap-2,
+  .space-y-6 > div:first-child > div.flex.gap-2 {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .space-y-4 > div:first-child > div.flex.gap-2 > button,
+  .space-y-6 > div:first-child > div.flex.gap-2 > button {
+    flex: 1;
+    justify-content: center;
+    min-height: 44px; /* touch target */
+  }
+}
+
+/* ─── Bloqueados tabs ──────────────────────────────────── */
+
+/* MOBILE FIX — Bloqueados/Parciais tabs: wrap on very small screens */
+@media (max-width: 480px) {
+  /* The tabs flex row */
+  .space-y-4 > div.flex.gap-2:not(.lp__row) {
+    flex-wrap: wrap;
+  }
+
+  .space-y-4 > div.flex.gap-2:not(.lp__row) > button {
+    flex: 1;
+    min-width: 120px;
+    justify-content: center;
+    min-height: 44px;
+  }
+}
+
+/* ─── Filter rows ──────────────────────────────────────── */
+
+/* MOBILE FIX — filter selects: full width on mobile */
+@media (max-width: 640px) {
+  /* Any select inside flex-col + gap-2 filter container */
+  .flex.flex-col.gap-2 > select,
+  .flex.flex-col.md\:flex-row.gap-2 > select {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* MOBILE FIX — search inputs: always full width, min touch height */
+  input[type="text"],
+  input[type="password"],
+  input[type="search"],
+  input[type="email"],
+  select,
+  textarea {
+    max-width: 100%;
+    min-height: 44px;
+  }
+
+  /* Override the py-2.5 height: keep the explicit padding, just ensure min */
+  input.py-2\.5, select.py-2\.5 {
+    min-height: 44px;
+  }
+}
+
+/* ─── Bottom nav ───────────────────────────────────────── */
+
+/* MOBILE FIX — bottom nav: distribute evenly, respect safe-area */
+@media (max-width: 640px) {
+  nav.fixed.bottom-0 {
+    height: auto;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.25rem);
+  }
+
+  nav.fixed.bottom-0 > button {
+    flex: 1;
+    min-height: 44px;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+}
+
+/* ─── Mobile header ────────────────────────────────────── */
+
+/* MOBILE FIX — prevent header icon group from overflowing */
+@media (max-width: 380px) {
+  header.fixed.top-0 > div.flex.items-center.gap-3 {
+    gap: 0.5rem;
+  }
+}
+
+/* ─── Modals ───────────────────────────────────────────── */
+
+/* MOBILE FIX — modals: full width with 16px side margins */
+@media (max-width: 640px) {
+  /* Wrapper that's fixed + flex + justify-center + p-4 */
+  .fixed.inset-0.z-50.flex.items-center.justify-center,
+  .fixed.inset-0.z-\[100\].flex.items-center.justify-center {
+    padding: 1rem;
+    align-items: flex-end; /* slide up from bottom on mobile */
+  }
+
+  /* MOBILE FIX — modal card itself */
+  .fixed.inset-0.z-50.flex.items-center.justify-center > div,
+  .fixed.inset-0.z-\[100\].flex.items-center.justify-center > div {
+    width: calc(100% - 2rem);
+    max-width: 100%;
+    max-height: 90dvh;
+    overflow-y: auto;
+    border-radius: 1rem 1rem 0.5rem 0.5rem;
+    align-self: flex-end;
+    margin-bottom: env(safe-area-inset-bottom, 0);
+  }
+}
+
+/* ─── Glass cards inside grids ─────────────────────────── */
+
+/* MOBILE FIX — KPI cards: prevent text overflow in 2-column grid */
+@media (max-width: 430px) {
+  .glass-card p {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  /* KPI value text can shrink */
+  .glass-card .text-lg,
+  .glass-card .text-2xl {
+    font-size: clamp(0.9rem, 4vw, 1.25rem);
+  }
+
+  /* KPI label text */
+  .glass-card .text-xs,
+  .glass-card .text-sm {
+    font-size: clamp(0.65rem, 3vw, 0.875rem);
+  }
+}
+
+/* ─── Login page safe-area ─────────────────────────────── */
+
+/* MOBILE FIX — login form panel: fill full dynamic viewport height */
+@media (max-width: 899px) {
+  .lp {
+    min-height: 100dvh;
+  }
+
+  .lp__form-wrap {
+    min-height: 100dvh;
+    padding-top: max(2rem, env(safe-area-inset-top, 2rem));
+    padding-bottom: max(2rem, env(safe-area-inset-bottom, 2rem));
+  }
+
+  /* MOBILE FIX — login card max width respected inside padding */
+  .lp__card {
+    max-width: 100%;
+  }
+}
+
+/* ─── Agente/importar pages: additional pill badges ─────── */
+
+/* MOBILE FIX — badge text wrap prevention */
+@media (max-width: 640px) {
+  .badge-emergencia,
+  .badge-atencao,
+  .badge-lembrete,
+  .badge-normal,
+  .badge-bloqueado,
+  .badge-liberado {
+    display: inline-flex;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ─── Mobile sidebar overlay ───────────────────────────── */
+
+/* MOBILE FIX — sidebar: clamp width so it never overflows on 375px */
+@media (max-width: 640px) {
+  aside.fixed.top-14 {
+    width: min(18rem, calc(100vw - 2rem));
+  }
+}
