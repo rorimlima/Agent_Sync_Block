@@ -96,7 +96,7 @@ export default function ColaboradoresPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from('colaboradores')
-      .select('id, nome, email, funcao, auth_user_id, created_at, updated_at, is_deleted, deleted_at')
+      .select('id, nome, email, funcao, auth_user_id, ativo, created_at, updated_at, is_deleted')
       .or('is_deleted.is.null,is_deleted.eq.false')
       .order('created_at', { ascending: false });
 
@@ -281,7 +281,6 @@ export default function ColaboradoresPage() {
         .from('colaboradores')
         .update({
           is_deleted: true,
-          deleted_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', deleteTarget.id);

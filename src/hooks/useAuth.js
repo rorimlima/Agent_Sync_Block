@@ -111,7 +111,7 @@ export function AuthProvider({ children }) {
         (async () => {
           for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-              const { data } = await supabase.from('colaboradores').select('id, nome, funcao, email, auth_user_id, created_at, updated_at').eq('auth_user_id', authUser.id).single();
+              const { data } = await supabase.from('colaboradores').select('id, nome, funcao, email, auth_user_id, ativo, created_at, updated_at').eq('auth_user_id', authUser.id).single();
               if (data && data.funcao && data.nome) {
                 setColaborador(data);
                 saveToCache('asb-colab', data);
@@ -134,7 +134,7 @@ export function AuthProvider({ children }) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const res = await supabase
         .from('colaboradores')
-        .select('id, nome, funcao, email, auth_user_id, created_at, updated_at')
+        .select('id, nome, funcao, email, auth_user_id, ativo, created_at, updated_at')
         .eq('auth_user_id', authUser.id)
         .single();
 
@@ -213,7 +213,7 @@ export function AuthProvider({ children }) {
       throw new Error('Colaborador não encontrado no sistema');
     }
 
-    if (!colab.ativo) {
+    if (colab.ativo === false) {
       await supabase.auth.signOut();
       throw new Error('Sua conta está bloqueada. Contate o administrador.');
     }
