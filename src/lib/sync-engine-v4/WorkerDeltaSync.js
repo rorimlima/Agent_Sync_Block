@@ -28,6 +28,7 @@ import {
   purgeDeletedOlderThan,
   verifyIntegrity,
   resetTable,
+  countRecords,
 } from './WorkerSyncDatabase.js';
 
 // ─── Configuration ──────────────────────────────────────────────────────────────
@@ -83,6 +84,14 @@ async function fetchWithRetry(queryFn, retries = MAX_RETRIES) {
 /**
  * Sync a single table — decides between Full Load and Delta Sync.
  * 
+ * ═══════════════════════════════════════════════════════════════════════
+ * OFFLINE-FIRST GUARANTEE:
+ * If there is cached data in IndexedDB and the network is unavailable,
+ * this function returns the cached data INSTANTLY instead of blocking.
+ * The user (especially Agents in the field) sees their last-synced data
+ * immediately, and can press the Sync FAB when connectivity returns.
+ * ═══════════════════════════════════════════════════════════════════════
+ * 
  * @param {string} table - Table name
  * @param {Object} [options]
  * @param {Object} [options.filter] - Supabase eq filters
@@ -94,21 +103,53 @@ async function fetchWithRetry(queryFn, retries = MAX_RETRIES) {
 export async function syncTable(table, options = {}) {
   const { filter, forceFullReload = false, onProgress } = options;
 
+  // ── Check if we're offline ──
+  const isOffline = typeof self !== 'undefined' && 'onLine' in self.navigator && !self.navigator.onLine;
+
   // Auto-heal check: verify table integrity before syncing
   const integrity = await verifyIntegrity(table);
   if (!integrity.ok) {
     console.warn(`[DeltaSync] Table "${table}" corrupted: ${integrity.error}. Triggering auto-heal.`);
     await resetTable(table);
-    // Force full reload after healing
+    if (isOffline) {
+      // Can't heal without network — return empty
+      return { source: 'offline-empty', count: 0 };
+    }
     return performChunkedFullLoad(table, { filter, onProgress });
   }
 
   const hadInitial = await hasInitialLoad(table);
 
-  if (!hadInitial || forceFullReload) {
-    return performChunkedFullLoad(table, { filter, onProgress });
-  } else {
-    return performDeltaSync(table, { filter, onProgress });
+  // ── OFFLINE PATH: Return cached data immediately ──
+  if (isOffline) {
+    if (hadInitial) {
+      const cachedCount = await countRecords(table);
+      console.log(`[DeltaSync] OFFLINE — Serving ${cachedCount} cached records for "${table}"`);
+      onProgress?.({ table, phase: 'cache_hit', loaded: cachedCount });
+      return { source: 'cache', count: cachedCount };
+    }
+    // No cached data and offline — nothing to show
+    console.warn(`[DeltaSync] OFFLINE — No cached data for "${table}"`);
+    return { source: 'offline-empty', count: 0 };
+  }
+
+  // ── ONLINE PATH: Sync with network, fallback to cache on error ──
+  try {
+    if (!hadInitial || forceFullReload) {
+      return await performChunkedFullLoad(table, { filter, onProgress });
+    } else {
+      return await performDeltaSync(table, { filter, onProgress });
+    }
+  } catch (err) {
+    // Network failed mid-request — fall back to cached data
+    console.warn(`[DeltaSync] Network error syncing "${table}": ${err.message}. Using cached data.`);
+    if (hadInitial) {
+      const cachedCount = await countRecords(table);
+      onProgress?.({ table, phase: 'cache_fallback', loaded: cachedCount });
+      return { source: 'cache-fallback', count: cachedCount };
+    }
+    // Re-throw if no cache at all (first-ever load with broken network)
+    throw err;
   }
 }
 

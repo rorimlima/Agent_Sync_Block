@@ -49,7 +49,8 @@ export default function SyncFAB() {
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const [showLabel, setShowLabel] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [syncResult, setSyncResult] = useState(null); // 'success' | 'error' | null
+  const [syncResult, setSyncResult] = useState(null); // 'success' | 'error' | 'offline' | null
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
   const hideTimerRef = useRef(null);
   const resultTimerRef = useRef(null);
   const menuRef = useRef(null);
@@ -60,6 +61,22 @@ export default function SyncFAB() {
   const activeTables = colaborador?.funcao
     ? getTablesForRole(colaborador.funcao)
     : [];
+
+  // ── Track online/offline state and auto-sync on reconnect ──
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOnline(true);
+      // Auto-trigger delta sync when connection returns
+      setSyncResult(null);
+    };
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   // ── Auto-hide label after 3 seconds ──
   useEffect(() => {
@@ -105,6 +122,14 @@ export default function SyncFAB() {
    */
   const handleDeltaSync = useCallback(async () => {
     if (isSyncing || activeTables.length === 0) return;
+
+    // ── If offline, show feedback but don't block ──
+    if (!navigator.onLine) {
+      setSyncResult('offline');
+      setShowLabel(true);
+      return;
+    }
+
     setIsSyncing(true);
     setShowMenu(false);
     setShowLabel(true);
@@ -256,29 +281,39 @@ export default function SyncFAB() {
 
   const getStatusColor = () => {
     if (syncResult === 'success') return 'var(--color-success)';
+    if (syncResult === 'offline') return 'var(--color-warning)';
     if (syncResult === 'error' || status === 'error') return 'var(--color-danger)';
     if (isSyncing || status === 'syncing') return 'var(--color-primary)';
-    if (status === 'offline') return 'var(--color-text-muted)';
+    if (status === 'offline' || !isOnline) return 'var(--color-text-muted)';
     if (pendingCount > 0) return 'var(--color-warning)';
     return 'var(--color-success)';
   };
 
   const getStatusIcon = () => {
     if (syncResult === 'success') return <Check className="w-5 h-5" />;
+    if (syncResult === 'offline') return <CloudOff className="w-5 h-5" />;
     if (syncResult === 'error' || status === 'error') return <AlertCircle className="w-5 h-5" />;
     if (isSyncing || status === 'syncing') return <RefreshCw className="w-5 h-5 animate-spin" style={{ animationDuration: '1s' }} />;
-    if (status === 'offline') return <CloudOff className="w-5 h-5" />;
+    if (status === 'offline' || !isOnline) return <CloudOff className="w-5 h-5" />;
     if (pendingCount > 0) return <Cloud className="w-5 h-5" />;
     return <RefreshCw className="w-5 h-5" />;
   };
 
   const getStatusLabel = () => {
     if (syncResult === 'success') return 'Sincronizado!';
+    if (syncResult === 'offline') return 'Sem conexão';
     if (syncResult === 'error') return 'Erro na sync';
     if (isSyncing || status === 'syncing') return 'Sincronizando...';
-    if (status === 'offline') return 'Offline';
+    if (status === 'offline' || !isOnline) {
+      // Show last sync time so agent knows how fresh the data is
+      if (lastSyncTime) {
+        return `Offline · ${getLastSyncLabel()}`;
+      }
+      return 'Modo Offline';
+    }
     if (status === 'error') return 'Erro';
     if (pendingCount > 0) return `${pendingCount} pendente${pendingCount > 1 ? 's' : ''}`;
+    if (lastSyncTime) return `✓ ${getLastSyncLabel()}`;
     return 'Sincronizar';
   };
 
@@ -294,7 +329,8 @@ export default function SyncFAB() {
   if (!colaborador?.funcao) return null;
 
   const statusColor = getStatusColor();
-  const isDisabled = isSyncing || status === 'offline';
+  // FAB is ALWAYS interactive — even offline (shows feedback to user)
+  const isDisabled = isSyncing;
 
   return (
     <>
@@ -397,7 +433,7 @@ export default function SyncFAB() {
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        disabled={status === 'offline' && pendingCount === 0}
+        disabled={isSyncing}
         aria-label="Sincronizar dados"
         className="sync-fab"
         style={{
@@ -419,7 +455,7 @@ export default function SyncFAB() {
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           outline: 'none',
-          opacity: status === 'offline' && pendingCount === 0 ? 0.5 : 1,
+          opacity: !isOnline && !isSyncing ? 0.7 : 1,
           transform: isSyncing ? 'scale(1.05)' : 'scale(1)',
         }}
       >
