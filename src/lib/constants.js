@@ -32,7 +32,6 @@ export const PERMISSION_MAP = {
   ],
   agente: [
     '/dashboard/bloqueados',
-    '/dashboard/agente',
   ],
 };
 
@@ -50,7 +49,7 @@ export const NAV_ITEMS = [
   { href: '/dashboard/clientes', label: 'Clientes', icon: 'Users', roles: ['master', 'financeiro'] },
   { href: '/dashboard/vendas', label: 'Vendas', icon: 'ShoppingCart', roles: ['master', 'financeiro', 'documentacao'] },
   { href: '/dashboard/bloqueados', label: 'Bloqueados', icon: 'Lock', roles: ['master', 'financeiro', 'documentacao', 'agente'] },
-  { href: '/dashboard/agente', label: 'Agente', icon: 'Shield', roles: ['master', 'agente'] },
+  { href: '/dashboard/agente', label: 'Agente', icon: 'Shield', roles: ['master'] },
   { href: '/dashboard/colaboradores', label: 'Colaboradores', icon: 'UserCog', roles: ['master'] },
   { href: '/dashboard/logs', label: 'Logs de Atividade', icon: 'ClipboardList', roles: ['master', 'financeiro'] },
 ];
