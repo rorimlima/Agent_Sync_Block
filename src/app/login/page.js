@@ -55,12 +55,20 @@ export default function LoginPage() {
         <div className="lp__brand-bg">
           {[...Array(3)].map((_, i) => <div key={i} className={`lp__ring lp__ring--${i + 1}`} />)}
           <div className="lp__particles">
-            {[...Array(20)].map((_, i) => (
-              <div key={i} className="lp__dot" style={{
-                left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 6}s`, animationDuration: `${4 + Math.random() * 4}s`,
-              }} />
-            ))}
+            {[...Array(20)].map((_, i) => {
+              // Deterministic positions to avoid SSR/client hydration mismatch
+              const seed = (i * 7 + 3) % 20;
+              const left = ((seed * 13 + i * 17) % 100);
+              const top = ((seed * 23 + i * 11) % 100);
+              const delay = ((i * 3 + 1) % 12) * 0.5;
+              const duration = 4 + ((i * 7 + 2) % 8) * 0.5;
+              return (
+                <div key={i} className="lp__dot" style={{
+                  left: `${left}%`, top: `${top}%`,
+                  animationDelay: `${delay}s`, animationDuration: `${duration}s`,
+                }} />
+              );
+            })}
           </div>
         </div>
         <div className="lp__brand-content">

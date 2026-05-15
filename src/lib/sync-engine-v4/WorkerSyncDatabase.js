@@ -18,20 +18,19 @@ import Dexie from 'dexie';
 // ─── Database Schema ────────────────────────────────────────────────────────────
 
 const DB_NAME = 'agent_sync_v4';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 // Dexie schema: only indexed fields are declared. Non-indexed fields are stored automatically.
 // '&' = unique, '+' = auto-increment, '*' = multi-entry, '++' = auto-increment primary key
 const SCHEMA = {
   // ── Data Tables ──
-  // deleted_at: ISO timestamp for soft-delete (Delta Sync reads this)
-  // is_deleted: boolean flag for fast local filtering
-  clientes:            '&id, updated_at, is_deleted, deleted_at, cod_cliente',
-  vendas:              '&id, updated_at, is_deleted, deleted_at, cod_cliente, placa, status',
-  veiculos_bloqueados: '&id, updated_at, is_deleted, deleted_at, placa, status_final',
-  audit_logs:          '&id, updated_at, is_deleted, deleted_at, created_at',
+  // is_deleted: boolean flag for soft-delete filtering
+  clientes:            '&id, updated_at, is_deleted, cod_cliente',
+  vendas:              '&id, updated_at, is_deleted, cod_cliente, placa, status',
+  veiculos_bloqueados: '&id, updated_at, is_deleted, placa, status_final',
+  audit_logs:          '&id, updated_at, is_deleted, created_at',
 
-  colaboradores:       '&id, updated_at, is_deleted, deleted_at, auth_user_id',
+  colaboradores:       '&id, updated_at, is_deleted, auth_user_id',
 
   // ── Internal Stores ──
   _mutation_queue:     '++queue_id, status, table, next_retry_at',
@@ -124,7 +123,7 @@ export async function countRecords(table) {
 
 /**
  * Purge soft-deleted records older than N days (garbage collection).
- * Uses deleted_at timestamp when available, falls back to is_deleted + updated_at.
+ * Uses is_deleted boolean + updated_at timestamp.
  */
 export async function purgeDeletedOlderThan(table, days = 7) {
   const cutoffISO = new Date(Date.now() - days * 86400000).toISOString();
@@ -132,9 +131,6 @@ export async function purgeDeletedOlderThan(table, days = 7) {
 
   const toDelete = await d.table(table)
     .filter(r => {
-      // Check deleted_at first (new soft-delete with timestamp)
-      if (r.deleted_at && r.deleted_at < cutoffISO) return true;
-      // Fallback: is_deleted boolean + updated_at
       if (r.is_deleted === true && r.updated_at < cutoffISO) return true;
       return false;
     })
