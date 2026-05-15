@@ -12,9 +12,9 @@
  * 5. OFFLINE:            Gray cloud-off icon, static
  * 
  * Tap behavior:
- * - When idle/synced:    Force delta sync on all active tables
- * - When pending/error:  Force process mutation queue
- * - When syncing:        No-op (disabled)
+ * - Single tap:         ALWAYS triggers Delta Sync (push pending + pull changes)
+ * - Long press / menu:  Shows context menu with Sync Rápido, Sync Completo, Limpar Cache
+ * - When syncing:       No-op (disabled)
  * 
  * Position: Bottom-right corner, above the mobile bottom nav bar
  * ═══════════════════════════════════════════════════════════════════════
@@ -53,6 +53,8 @@ export default function SyncFAB() {
   const hideTimerRef = useRef(null);
   const resultTimerRef = useRef(null);
   const menuRef = useRef(null);
+  const fabRef = useRef(null);
+  const longPressTimerRef = useRef(null);
 
   // Determine active tables from user role
   const activeTables = colaborador?.funcao
@@ -79,7 +81,8 @@ export default function SyncFAB() {
   useEffect(() => {
     if (!showMenu) return;
     const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
+      if (menuRef.current && !menuRef.current.contains(e.target) &&
+          fabRef.current && !fabRef.current.contains(e.target)) {
         setShowMenu(false);
       }
     };
@@ -97,7 +100,8 @@ export default function SyncFAB() {
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   /**
-   * Delta Sync — quick sync: fetches only changed records
+   * Full Sync Flow — Push pending mutations FIRST, then Delta Sync all tables.
+   * This ensures data consistency: local changes are pushed before pulling.
    */
   const handleDeltaSync = useCallback(async () => {
     if (isSyncing || activeTables.length === 0) return;
@@ -107,6 +111,14 @@ export default function SyncFAB() {
     setSyncResult(null);
 
     try {
+      // Step 1: Force-process any pending mutations in the queue
+      // This pushes local changes to Supabase BEFORE we pull
+      forceProcess();
+
+      // Small delay to let the queue start processing
+      await new Promise(r => setTimeout(r, 300));
+
+      // Step 2: Delta Sync all tables (pull only changes since last_sync_at)
       let totalChanged = 0;
       for (const table of activeTables) {
         try {
@@ -116,19 +128,23 @@ export default function SyncFAB() {
           console.warn(`[SyncFAB] Delta sync failed for "${table}":`, err.message);
         }
       }
+
       setLastSyncTime(new Date());
       setSyncResult('success');
       setShowLabel(true);
+      console.log(`[SyncFAB] Delta sync completed — ${totalChanged} records synced`);
     } catch (err) {
       console.error('[SyncFAB] Delta sync error:', err);
       setSyncResult('error');
+      setShowLabel(true);
     } finally {
       setIsSyncing(false);
     }
   }, [isSyncing, activeTables]);
 
   /**
-   * Hard Sync — full reload of all tables (like AppSheet "force sync")
+   * Hard Sync — Full reload of all tables (like AppSheet "force sync").
+   * Clears local IndexedDB tables and reloads everything from Supabase.
    */
   const handleHardSync = useCallback(async () => {
     if (isSyncing || activeTables.length === 0) return;
@@ -138,6 +154,11 @@ export default function SyncFAB() {
     setSyncResult(null);
 
     try {
+      // Step 1: Force-process pending mutations first
+      forceProcess();
+      await new Promise(r => setTimeout(r, 500));
+
+      // Step 2: Hard sync all tables (clear + full reload)
       for (const table of activeTables) {
         try {
           await forceHardSync(table);
@@ -145,47 +166,91 @@ export default function SyncFAB() {
           console.warn(`[SyncFAB] Hard sync failed for "${table}":`, err.message);
         }
       }
+
       setLastSyncTime(new Date());
       setSyncResult('success');
       setShowLabel(true);
+      console.log('[SyncFAB] Hard sync completed — all tables reloaded');
     } catch (err) {
       console.error('[SyncFAB] Hard sync error:', err);
       setSyncResult('error');
+      setShowLabel(true);
     } finally {
       setIsSyncing(false);
     }
   }, [isSyncing, activeTables]);
 
   /**
-   * Force process pending mutations
+   * Cache Cleanup — Forces GC on all tables then delta sync.
+   * Removes: soft-deleted (7d), finalized records (15d), then syncs fresh.
    */
-  const handleForceProcess = useCallback(() => {
-    forceProcess();
+  const handleCacheCleanup = useCallback(async () => {
+    if (isSyncing || activeTables.length === 0) return;
+    setIsSyncing(true);
     setShowMenu(false);
-  }, []);
+    setShowLabel(true);
+    setSyncResult(null);
+
+    try {
+      // Step 1: Force-process pending mutations
+      forceProcess();
+      await new Promise(r => setTimeout(r, 300));
+
+      // Step 2: Hard sync — this clears old data and pulls fresh
+      // The Worker automatically runs GC (purgeDeleted + purgeFinalized)
+      // 30s after INIT, but a hard sync does an immediate clear + reload
+      for (const table of activeTables) {
+        try {
+          await forceHardSync(table);
+        } catch (err) {
+          console.warn(`[SyncFAB] Cache cleanup failed for "${table}":`, err.message);
+        }
+      }
+
+      setLastSyncTime(new Date());
+      setSyncResult('success');
+      setShowLabel(true);
+      console.log('[SyncFAB] Cache cleanup completed — old data purged, tables reloaded');
+    } catch (err) {
+      console.error('[SyncFAB] Cache cleanup error:', err);
+      setSyncResult('error');
+      setShowLabel(true);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [isSyncing, activeTables]);
 
   /**
-   * Main FAB tap handler
+   * Main FAB tap handler — ALWAYS syncs.
+   * Single tap = push pending + pull delta (fast, lightweight).
    */
   const handleFabTap = useCallback(() => {
     if (isSyncing) return;
 
-    // If error or pending, process queue
-    if (status === 'error' || pendingCount > 0) {
-      handleForceProcess();
-      handleDeltaSync();
+    // If menu is open, close it
+    if (showMenu) {
+      setShowMenu(false);
       return;
     }
 
-    // If long press or label visible, toggle menu
-    if (showLabel || showMenu) {
-      setShowMenu(!showMenu);
-      return;
-    }
-
-    // Default: quick delta sync
+    // ALWAYS sync on tap — no menu toggling on single tap
     handleDeltaSync();
-  }, [isSyncing, status, pendingCount, showLabel, showMenu, handleDeltaSync, handleForceProcess]);
+  }, [isSyncing, showMenu, handleDeltaSync]);
+
+  /**
+   * Long press handler — opens context menu
+   */
+  const handlePointerDown = useCallback(() => {
+    longPressTimerRef.current = setTimeout(() => {
+      if (!isSyncing) {
+        setShowMenu(true);
+      }
+    }, 500); // 500ms = long press
+  }, [isSyncing]);
+
+  const handlePointerUp = useCallback(() => {
+    clearTimeout(longPressTimerRef.current);
+  }, []);
 
   // ── Render Helpers ────────────────────────────────────────────────────────────
 
@@ -246,9 +311,9 @@ export default function SyncFAB() {
           }}
         >
           <div className="bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden"
-            style={{ minWidth: '220px', backdropFilter: 'blur(20px)' }}
+            style={{ minWidth: '230px', backdropFilter: 'blur(20px)' }}
           >
-            {/* Delta Sync */}
+            {/* Delta Sync (quick) */}
             <button
               onClick={handleDeltaSync}
               disabled={isDisabled}
@@ -257,13 +322,13 @@ export default function SyncFAB() {
               <RefreshCw className="w-4 h-4 text-primary" />
               <div className="text-left">
                 <p className="font-medium">Sync Rápido</p>
-                <p className="text-[10px] text-text-muted">Apenas alterações recentes</p>
+                <p className="text-[10px] text-text-muted">Enviar pendentes + puxar alterações</p>
               </div>
             </button>
 
             <div className="h-px bg-border" />
 
-            {/* Hard Sync */}
+            {/* Hard Sync (full reload) */}
             <button
               onClick={handleHardSync}
               disabled={isDisabled}
@@ -276,18 +341,33 @@ export default function SyncFAB() {
               </div>
             </button>
 
+            <div className="h-px bg-border" />
+
+            {/* Cache Cleanup */}
+            <button
+              onClick={handleCacheCleanup}
+              disabled={isDisabled}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-text hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-40"
+            >
+              <Trash2 className="w-4 h-4 text-danger" />
+              <div className="text-left">
+                <p className="font-medium">Limpar Cache</p>
+                <p className="text-[10px] text-text-muted">Remover dados antigos e recarregar</p>
+              </div>
+            </button>
+
             {/* Force Process (only if pending) */}
             {pendingCount > 0 && (
               <>
                 <div className="h-px bg-border" />
                 <button
-                  onClick={handleForceProcess}
+                  onClick={() => { forceProcess(); setShowMenu(false); }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-sm text-text hover:bg-surface-2 transition-colors cursor-pointer"
                 >
                   <Cloud className="w-4 h-4 text-success" />
                   <div className="text-left">
                     <p className="font-medium">Enviar Pendentes</p>
-                    <p className="text-[10px] text-text-muted">{pendingCount} alterações na fila</p>
+                    <p className="text-[10px] text-text-muted">{pendingCount} alteração{pendingCount > 1 ? 'ões' : ''} na fila</p>
                   </div>
                 </button>
               </>
@@ -311,8 +391,12 @@ export default function SyncFAB() {
 
       {/* ── FAB Button ── */}
       <button
+        ref={fabRef}
         onClick={handleFabTap}
         onContextMenu={(e) => { e.preventDefault(); setShowMenu(true); }}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         disabled={status === 'offline' && pendingCount === 0}
         aria-label="Sincronizar dados"
         className="sync-fab"

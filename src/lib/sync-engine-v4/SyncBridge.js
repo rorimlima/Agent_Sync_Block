@@ -101,6 +101,7 @@ function getWorker() {
       case 'HARD_SYNC_RESULT':
       case 'GET_ALL_RESULT':
       case 'RESET_DONE':
+      case 'GC_DONE':
       case 'DESTROYED': {
         const pending = _pendingRequests[msg.requestId];
         if (pending) {
