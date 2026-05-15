@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#6366f1">
+  <title>Política de Privacidade — Agent Sync Block</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon-32.png" type="image/png">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0a0a0f;color:#e4e4e7;font-family:'Inter',system-ui,sans-serif;line-height:1.8;padding:24px}
+    .container{max-width:720px;margin:0 auto;padding:40px 0}
+    h1{font-size:1.75rem;font-weight:800;margin-bottom:8px;
+       background:linear-gradient(135deg,#e4e4e7,#a1a1aa);
+       -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .subtitle{color:#71717a;font-size:0.95rem;margin-bottom:32px}
+    h2{font-size:1.2rem;font-weight:700;color:#6366f1;margin:28px 0 12px;border-left:3px solid #6366f1;padding-left:12px}
+    p,li{color:#a1a1aa;font-size:0.95rem;margin-bottom:12px}
+    ul{padding-left:20px}
+    a{color:#818cf8;text-decoration:none}
+    a:hover{text-decoration:underline}
+    .footer{margin-top:48px;padding-top:24px;border-top:1px solid #1e1e2e;text-align:center;color:#3f3f46;font-size:0.8rem}
+    .back{display:inline-flex;align-items:center;gap:6px;color:#6366f1;font-weight:500;margin-bottom:24px;font-size:0.9rem}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/dashboard" class="back">← Voltar ao Dashboard</a>
+    <h1>Política de Privacidade</h1>
+    <p class="subtitle">Última atualização: 15 de maio de 2026</p>
+
+    <h2>1. Informações Coletadas</h2>
+    <p>O Agent Sync Block coleta apenas as informações necessárias para o funcionamento do sistema:</p>
+    <ul>
+      <li><strong>Dados de autenticação:</strong> Nome, e-mail e credenciais de acesso para login seguro.</li>
+      <li><strong>Dados operacionais:</strong> Registros de veículos, clientes e transações inseridos pelos usuários no exercício de suas funções.</li>
+      <li><strong>Logs de atividade:</strong> Registros de ações realizadas no sistema para fins de auditoria e segurança.</li>
+    </ul>
+
+    <h2>2. Uso das Informações</h2>
+    <p>As informações coletadas são utilizadas exclusivamente para:</p>
+    <ul>
+      <li>Gerenciar bloqueios e desbloqueios de veículos.</li>
+      <li>Controlar inadimplência e situação financeira de clientes.</li>
+      <li>Sincronizar dados entre dispositivos de forma segura.</li>
+      <li>Gerar relatórios e auditorias internas.</li>
+    </ul>
+
+    <h2>3. Armazenamento e Segurança</h2>
+    <p>Os dados são armazenados de forma segura utilizando:</p>
+    <ul>
+      <li><strong>Supabase:</strong> Banco de dados na nuvem com criptografia em trânsito (TLS) e em repouso, com isolamento por tenant via Row Level Security (RLS).</li>
+      <li><strong>IndexedDB local:</strong> Cache local criptografado no dispositivo para funcionamento offline, com limpeza automática de dados expirados.</li>
+      <li><strong>Autenticação JWT:</strong> Tokens de acesso com expiração controlada para sessões seguras.</li>
+    </ul>
+
+    <h2>4. Compartilhamento de Dados</h2>
+    <p>O Agent Sync Block <strong>não vende, aluga ou compartilha</strong> dados pessoais com terceiros. Os dados são acessíveis apenas pelos usuários autorizados dentro da organização contratante.</p>
+
+    <h2>5. Retenção de Dados</h2>
+    <ul>
+      <li>Dados ativos são mantidos durante a vigência do serviço.</li>
+      <li>Registros finalizados são removidos do cache local após 15 dias.</li>
+      <li>Registros excluídos (soft-delete) são removidos do cache local após 7 dias.</li>
+      <li>Dados no servidor são mantidos conforme políticas da organização contratante.</li>
+    </ul>
+
+    <h2>6. Direitos do Usuário</h2>
+    <p>O usuário tem direito a:</p>
+    <ul>
+      <li>Solicitar acesso aos seus dados pessoais.</li>
+      <li>Solicitar correção de dados incorretos.</li>
+      <li>Solicitar exclusão de seus dados, sujeito a requisitos legais de retenção.</li>
+      <li>Revogar consentimento a qualquer momento.</li>
+    </ul>
+
+    <h2>7. Cookies e Tecnologias de Rastreamento</h2>
+    <p>O Agent Sync Block não utiliza cookies de rastreamento ou analytics de terceiros. Apenas cookies funcionais são utilizados para manter sessões de autenticação ativas.</p>
+
+    <h2>8. Alterações nesta Política</h2>
+    <p>Esta política pode ser atualizada periodicamente. Alterações significativas serão comunicadas através do aplicativo.</p>
+
+    <h2>9. Contato</h2>
+    <p>Para dúvidas sobre esta política de privacidade ou sobre o tratamento de dados, entre em contato com o administrador do sistema através do painel de gerenciamento.</p>
+
+    <div class="footer">
+      <p>Agent Sync Block © 2026 — Todos os direitos reservados</p>
+      <p>Gestão de Inadimplência e Bloqueio de Veículos</p>
+    </div>
+  </div>
+</body>
+</html>
