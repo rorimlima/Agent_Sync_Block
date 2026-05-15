@@ -9,6 +9,7 @@ import { FUNCOES } from '@/lib/constants';
 import { getTablesForRole, getFilter } from '@/lib/syncByRole';
 import { destroySync } from '@/lib/sync-engine-v4';
 import SyncIndicator from './SyncIndicator';
+import SyncFAB from './SyncFAB';
 import { 
   LayoutDashboard, Upload, AlertTriangle, ShoppingCart, Lock, Shield, Users, UserCog,
   LogOut, Menu, X, Wifi, WifiOff, Sun, Moon, Crown, KeyRound, Eye, EyeOff, CheckCircle2, ClipboardList, ShieldAlert
@@ -383,6 +384,9 @@ export default function DashboardLayout({ children }) {
         </div>
       )}
 
+
+      {/* ── Sync FAB (AppSheet-style floating sync button) ── */}
+      <SyncFAB />
 
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-border flex items-center justify-around h-16 z-40">

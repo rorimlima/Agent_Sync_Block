@@ -2,6 +2,11 @@
  * Offline Cache — IndexedDB para dados do Supabase
  * Armazena tabelas localmente para acesso offline
  * Singleton pattern: mantém conexão aberta na memória
+ * 
+ * ═══════════════════════════════════════════════════════════════════════
+ * REFACTORED: localStorage eliminated. All timestamps now stored in
+ * IndexedDB _meta store for quota safety and consistency.
+ * ═══════════════════════════════════════════════════════════════════════
  */
 
 const DB_NAME = 'agent_sync_offline';
@@ -97,16 +102,33 @@ export async function clearPendingActions() {
   return new Promise((resolve) => { tx.oncomplete = resolve; });
 }
 
+/**
+ * Get the cache timestamp for a table.
+ * REFACTORED: Now reads from IndexedDB _meta store instead of localStorage.
+ */
 export async function getCacheTimestamp(tableName) {
   try {
-    const ts = localStorage.getItem(`cache_ts_${tableName}`);
-    return ts ? parseInt(ts) : 0;
+    const db = await openDB();
+    const tx = db.transaction('_meta', 'readonly');
+    const store = tx.objectStore('_meta');
+    return new Promise((resolve) => {
+      const req = store.get(`cache_ts_${tableName}`);
+      req.onsuccess = () => resolve(req.result?.value || 0);
+      req.onerror = () => resolve(0);
+    });
   } catch { return 0; }
 }
 
+/**
+ * Set the cache timestamp for a table to NOW.
+ * REFACTORED: Now writes to IndexedDB _meta store instead of localStorage.
+ */
 export async function setCacheTimestamp(tableName) {
   try {
-    localStorage.setItem(`cache_ts_${tableName}`, Date.now().toString());
+    const db = await openDB();
+    const tx = db.transaction('_meta', 'readwrite');
+    tx.objectStore('_meta').put({ key: `cache_ts_${tableName}`, value: Date.now() });
+    return new Promise((resolve) => { tx.oncomplete = resolve; });
   } catch {}
 }
 

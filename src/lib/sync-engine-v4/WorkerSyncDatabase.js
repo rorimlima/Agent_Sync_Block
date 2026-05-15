@@ -24,12 +24,14 @@ const DB_VERSION = 1;
 // '&' = unique, '+' = auto-increment, '*' = multi-entry, '++' = auto-increment primary key
 const SCHEMA = {
   // ── Data Tables ──
-  clientes:            '&id, updated_at, is_deleted, cod_cliente',
-  vendas:              '&id, updated_at, is_deleted, cod_cliente, placa',
-  veiculos_bloqueados: '&id, updated_at, is_deleted, placa, status_final',
-  audit_logs:          '&id, updated_at, is_deleted, created_at',
+  // deleted_at: ISO timestamp for soft-delete (Delta Sync reads this)
+  // is_deleted: boolean flag for fast local filtering
+  clientes:            '&id, updated_at, is_deleted, deleted_at, cod_cliente',
+  vendas:              '&id, updated_at, is_deleted, deleted_at, cod_cliente, placa, status',
+  veiculos_bloqueados: '&id, updated_at, is_deleted, deleted_at, placa, status_final',
+  audit_logs:          '&id, updated_at, is_deleted, deleted_at, created_at',
 
-  colaboradores:       '&id, updated_at, is_deleted, auth_user_id',
+  colaboradores:       '&id, updated_at, is_deleted, deleted_at, auth_user_id',
 
   // ── Internal Stores ──
   _mutation_queue:     '++queue_id, status, table, next_retry_at',
@@ -121,14 +123,58 @@ export async function countRecords(table) {
 }
 
 /**
- * Purge soft-deleted records older than N days (garbage collection)
+ * Purge soft-deleted records older than N days (garbage collection).
+ * Uses deleted_at timestamp when available, falls back to is_deleted + updated_at.
  */
 export async function purgeDeletedOlderThan(table, days = 7) {
   const cutoffISO = new Date(Date.now() - days * 86400000).toISOString();
   const d = getDB();
 
   const toDelete = await d.table(table)
-    .filter(r => r.is_deleted === true && r.updated_at < cutoffISO)
+    .filter(r => {
+      // Check deleted_at first (new soft-delete with timestamp)
+      if (r.deleted_at && r.deleted_at < cutoffISO) return true;
+      // Fallback: is_deleted boolean + updated_at
+      if (r.is_deleted === true && r.updated_at < cutoffISO) return true;
+      return false;
+    })
+    .primaryKeys();
+
+  if (toDelete.length > 0) {
+    await d.table(table).bulkDelete(toDelete);
+  }
+  return toDelete.length;
+}
+
+/**
+ * Garbage Collection for finalized records.
+ * Deletes records with status 'Finalizado' (or equivalent) that have
+ * updated_at older than N days. History stays in Supabase only.
+ * 
+ * @param {string} table - Table name
+ * @param {number} [days=15] - Retention period in days
+ * @returns {Promise<number>} Number of records purged
+ */
+export async function garbageCollectFinalizados(table, days = 15) {
+  const cutoffISO = new Date(Date.now() - days * 86400000).toISOString();
+  const d = getDB();
+
+  // Finalized status values to purge
+  const FINALIZED_STATUSES = [
+    'Finalizado', 'FINALIZADO', 'finalizado',
+    'VEÍCULO LIBERADO', 'LIBERADO',
+    'Concluído', 'CONCLUÍDO',
+  ];
+
+  const toDelete = await d.table(table)
+    .filter(r => {
+      if (!r.updated_at || r.updated_at >= cutoffISO) return false;
+      // Check status field (vendas)
+      if (r.status && FINALIZED_STATUSES.includes(r.status)) return true;
+      // Check status_final field (veiculos_bloqueados)
+      if (r.status_final && FINALIZED_STATUSES.includes(r.status_final)) return true;
+      return false;
+    })
     .primaryKeys();
 
   if (toDelete.length > 0) {

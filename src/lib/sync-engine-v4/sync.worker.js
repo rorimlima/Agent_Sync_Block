@@ -22,6 +22,7 @@ import {
   getById,
   resetDatabase,
   resetTable,
+  garbageCollectFinalizados,
   DATA_TABLES,
 } from './WorkerSyncDatabase.js';
 
@@ -244,7 +245,23 @@ self.onmessage = async (event) => {
           // Schedule garbage collection in 30s (non-blocking)
           setTimeout(async () => {
             try {
+              // 1. Purge soft-deleted records older than 7 days
               await runGarbageCollection(tables);
+
+              // 2. Purge finalized records older than 15 days
+              let totalFinalized = 0;
+              for (const table of tables) {
+                try {
+                  const count = await garbageCollectFinalizados(table, 15);
+                  if (count > 0) {
+                    console.log(`[Worker] GC: purged ${count} finalized records from "${table}"`);
+                    totalFinalized += count;
+                  }
+                } catch {}
+              }
+              if (totalFinalized > 0) {
+                postToMain({ type: 'GC_DONE', purged: totalFinalized });
+              }
             } catch {}
           }, 30000);
 
@@ -454,6 +471,24 @@ self.onmessage = async (event) => {
         _tableFilters = {};
         _isInitialized = false;
         postToMain({ type: 'DESTROYED' });
+        break;
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // RUN_GC — Manual garbage collection trigger from Main Thread
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      case 'RUN_GC': {
+        const { requestId } = msg;
+        let totalPurged = 0;
+        try {
+          totalPurged += await runGarbageCollection(_activeTables);
+          for (const table of _activeTables) {
+            try {
+              totalPurged += await garbageCollectFinalizados(table, 15);
+            } catch {}
+          }
+        } catch {}
+        postToMain({ type: 'GC_DONE', purged: totalPurged, requestId });
         break;
       }
 

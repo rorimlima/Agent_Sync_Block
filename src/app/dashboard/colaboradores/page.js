@@ -96,7 +96,8 @@ export default function ColaboradoresPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from('colaboradores')
-      .select('*')
+      .select('id, nome, email, funcao, auth_user_id, created_at, updated_at, is_deleted, deleted_at')
+      .or('is_deleted.is.null,is_deleted.eq.false')
       .order('created_at', { ascending: false });
 
     if (!error && data) {
@@ -270,16 +271,19 @@ export default function ColaboradoresPage() {
     }
   };
 
-  // Delete colaborador
+  // Soft-delete colaborador (NEVER hard delete — preserves Delta Sync integrity)
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
 
     try {
-      // Delete from colaboradores (cascade will handle auth.users if configured)
       const { error } = await supabase
         .from('colaboradores')
-        .delete()
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', deleteTarget.id);
 
       if (error) {

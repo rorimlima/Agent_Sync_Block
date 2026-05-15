@@ -33,7 +33,7 @@ export default function ClientesPage() {
       const from = currentPage * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      let query = supabase.from('clientes').select('*', { count: 'exact' });
+      let query = supabase.from('clientes').select('id, cod_cliente, razao_social, cpf_cnpj, celular, email, cidade, estado, updated_at', { count: 'exact' });
 
       if (searchTerm) {
         query = query.or(
@@ -99,7 +99,7 @@ export default function ClientesPage() {
   const openDetail = async (client) => {
     setSelectedClient(client);
     setShowModal(true);
-    const { data: v } = await supabase.from('vendas').select('*').eq('cod_cliente', client.cod_cliente).order('data_venda', { ascending: false });
+    const { data: v } = await supabase.from('vendas').select('id, cod_cliente, razao_social, placa, chassi, marca_modelo, valor_venda_cents, data_venda, bloqueio_financeiro, bloqueio_documentacao, status, vendedor, updated_at').eq('cod_cliente', client.cod_cliente).order('data_venda', { ascending: false });
     setClientVendas(v || []);
   };
 
